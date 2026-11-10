@@ -556,3 +556,72 @@ func TestBodyTooLarge(t *testing.T) {
 	big := `{"password":"` + strings.Repeat("x", 2<<20) + `"}`
 	wantError(t, h.do("POST", "/api/v1/setup", big), http.StatusBadRequest, "bad_request")
 }
+
+// ---- interrupted setup (final review, Important 1) ----
+
+// A client that disconnects mid-request must not leave setup half done.
+func TestSetupSurvivesClientDisconnect(t *testing.T) {
+	h := newHarness(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	h.do("POST", "/api/v1/setup", setupBody("keyfile"), func(r *http.Request) { *r = *r.WithContext(ctx) })
+	if n := h.metaRows(); n != 0 && h.status()["setup_required"] != false {
+		t.Fatalf("setup stopped half way: %d meta rows but setup_required is still true", n)
+	}
+	if h.status()["setup_required"] != false {
+		t.Fatal("setup did not complete for a request whose client went away")
+	}
+}
+
+// The vault was initialized by an attempt that died before the admin password
+// was stored. A retry must finish the job with the retry's choices.
+func TestSetupResumesAfterHalfFinishedAttempt(t *testing.T) {
+	ctx := context.Background()
+	t.Run("same process, new passphrase wins", func(t *testing.T) {
+		h := newHarness(t)
+		if err := h.vault.Init(ctx, vault.ModePassphrase, "the first attempt's phrase"); err != nil {
+			t.Fatal(err)
+		}
+		h.setup("passphrase")
+		h.restart()
+		h.login()
+		wantError(t, h.do("POST", "/api/v1/unlock", map[string]any{"passphrase": "the first attempt's phrase"}), http.StatusForbidden, "forbidden")
+		if w := h.do("POST", "/api/v1/unlock", map[string]any{"passphrase": vaultPass}); w.Code != http.StatusNoContent {
+			t.Fatalf("unlock with the retry's passphrase = %d %s", w.Code, w.Body)
+		}
+	})
+	t.Run("same process, mode can change", func(t *testing.T) {
+		h := newHarness(t)
+		if err := h.vault.Init(ctx, vault.ModePassphrase, "the first attempt's phrase"); err != nil {
+			t.Fatal(err)
+		}
+		h.setup("keyfile")
+		h.restart()
+		if s := h.status(); s["vault_state"] != "unlocked" || s["setup_required"] != false {
+			t.Fatalf("status = %v", s)
+		}
+	})
+	t.Run("after restart, keyfile", func(t *testing.T) {
+		h := newHarness(t)
+		if err := h.vault.Init(ctx, vault.ModeKeyfile, ""); err != nil {
+			t.Fatal(err)
+		}
+		h.restart()
+		h.setup("keyfile")
+	})
+	t.Run("after restart, locked vault needs the original passphrase", func(t *testing.T) {
+		h := newHarness(t)
+		if err := h.vault.Init(ctx, vault.ModePassphrase, vaultPass); err != nil {
+			t.Fatal(err)
+		}
+		h.restart()
+		b := setupBody("passphrase")
+		b["passphrase"] = "not the original one"
+		wantError(t, h.do("POST", "/api/v1/setup", b), http.StatusConflict, "conflict")
+		wantError(t, h.do("POST", "/api/v1/setup", setupBody("keyfile")), http.StatusConflict, "conflict")
+		if h.status()["setup_required"] != true {
+			t.Fatal("a refused retry completed setup")
+		}
+		h.setup("passphrase")
+	})
+}

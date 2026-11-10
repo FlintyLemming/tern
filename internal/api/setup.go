@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"unicode/utf8"
@@ -96,6 +98,9 @@ func (a *API) handleSetup(w http.ResponseWriter, r *http.Request) {
 
 	a.setupMu.Lock()
 	defer a.setupMu.Unlock()
+	// From here on the request runs to completion even if the client goes
+	// away: setup is several writes, and stopping between them strands it.
+	r = r.WithContext(context.WithoutCancel(r.Context()))
 	ctx := r.Context()
 
 	done, err := a.setupDone(ctx)
@@ -113,7 +118,17 @@ func (a *API) handleSetup(w http.ResponseWriter, r *http.Request) {
 		internalError(w, r, err)
 		return
 	}
-	if err := a.d.Vault.Init(ctx, mode, req.Passphrase); err != nil {
+	err = a.d.Vault.Init(ctx, mode, req.Passphrase)
+	if errors.Is(err, vault.ErrAlreadyInitialized) {
+		// An earlier attempt initialized the vault and died before the
+		// password was stored. Nothing can have been sealed yet: finish it.
+		if conflict := a.resumeVault(ctx, mode, req.Passphrase); conflict != "" {
+			writeError(w, http.StatusConflict, "conflict", conflict, nil)
+			return
+		}
+		err = nil
+	}
+	if err != nil {
 		internalError(w, r, err)
 		return
 	}
@@ -142,4 +157,30 @@ func (a *API) startSession(w http.ResponseWriter, r *http.Request, status int) {
 	}
 	setSessionCookie(w, r, token)
 	writeJSON(w, status, map[string]string{"csrf_token": csrf})
+}
+
+// resumeVault brings a vault left behind by an interrupted setup to the mode
+// and passphrase of this attempt. It returns "" on success, otherwise an
+// English explanation of why this attempt cannot take the vault over.
+func (a *API) resumeVault(ctx context.Context, mode vault.Mode, passphrase string) string {
+	v := a.d.Vault
+	const startOver = "to start over, stop tern and delete tern.db from the data directory"
+	switch v.State() {
+	case vault.StateUnlocked:
+	case vault.StateLocked:
+		if mode != vault.ModePassphrase {
+			return "an interrupted setup already chose passphrase mode; retry with unlock_mode passphrase and the same passphrase; " + startOver
+		}
+		if err := v.Unlock(ctx, passphrase); err != nil {
+			return "an interrupted setup already set a different passphrase; retry with that passphrase; " + startOver
+		}
+	default:
+		return "an interrupted setup created a vault whose key file is now " + string(v.State()) + "; " + startOver
+	}
+	// Unlocked: re-wrap the (still unused) data key for this attempt's choice.
+	if err := v.SwitchMode(ctx, mode, passphrase); err != nil {
+		slog.Error("resuming interrupted setup failed", "err", err)
+		return "could not finish the interrupted setup; " + startOver
+	}
+	return ""
 }
