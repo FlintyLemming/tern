@@ -7,10 +7,12 @@ import (
 	"strings"
 	"time"
 
+	"tern/internal/access"
 	"tern/internal/auth"
 	"tern/internal/model"
 	"tern/internal/sshx"
 	"tern/internal/store"
+	"tern/internal/vault"
 )
 
 func (a *API) registerConnections() {
@@ -21,6 +23,7 @@ func (a *API) registerConnections() {
 	a.Handle("GET /api/v1/connections/{id}", a.handleGetConnection, g...)
 	a.Handle("PUT /api/v1/connections/{id}", a.handleUpdateConnection, g...)
 	a.Handle("DELETE /api/v1/connections/{id}", a.handleDeleteConnection, g...)
+	a.Handle("POST /api/v1/connections/{id}/test", a.handleTestConnection, g...)
 }
 
 type connJSON struct {
@@ -266,4 +269,27 @@ func (a *API) handleDeleteConnection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleTestConnection runs the preflight. A connection that fails it is a
+// normal answer ({"ok":false,…}), not an HTTP error.
+func (a *API) handleTestConnection(w http.ResponseWriter, r *http.Request) {
+	type result struct {
+		OK      bool   `json:"ok"`
+		Kind    string `json:"kind"`
+		Message string `json:"message"`
+	}
+	err := access.Opener{Store: a.d.Store, Vault: a.d.Vault}.Check(r.Context(), r.PathValue("id"))
+	var ke *model.KindError
+	switch {
+	case err == nil:
+		writeJSON(w, http.StatusOK, result{OK: true})
+	case errors.As(err, &ke):
+		writeJSON(w, http.StatusOK, result{Kind: string(ke.Kind), Message: ke.Error()})
+	case errors.Is(err, vault.ErrLocked):
+		// Locked between the guard and here.
+		writeError(w, http.StatusServiceUnavailable, "vault_locked", "the credential vault is locked; unlock it with the passphrase", nil)
+	default:
+		storeError(w, r, err, "connection")
+	}
 }

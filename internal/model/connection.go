@@ -91,6 +91,18 @@ func CheckHost(h string) string {
 	return ""
 }
 
+// CheckSSHUser accepts conservative POSIX-style login names; in particular
+// nothing with whitespace or a leading '-'. It returns "" or an error code.
+func CheckSSHUser(u string) string {
+	switch {
+	case u == "":
+		return "required"
+	case !sshUserRE.MatchString(u):
+		return "invalid"
+	}
+	return ""
+}
+
 // CheckPort returns "" for 1–65535.
 func CheckPort(p int) string {
 	if p < 1 || p > 65535 {
@@ -148,12 +160,7 @@ func (c Connection) Validate() map[string]string {
 	case ConnSSH:
 		set("host", CheckHost(c.Host))
 		set("port", CheckPort(c.Port))
-		switch {
-		case c.Username == "":
-			f["username"] = "required"
-		case !sshUserRE.MatchString(c.Username):
-			f["username"] = "invalid"
-		}
+		set("username", CheckSSHUser(c.Username))
 		if c.SSHKeyID == "" {
 			f["ssh_key_id"] = "required"
 		}

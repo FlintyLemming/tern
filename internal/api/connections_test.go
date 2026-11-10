@@ -3,11 +3,13 @@ package api
 import (
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"golang.org/x/crypto/ssh"
 
+	"tern/internal/model"
 	"tern/internal/sshx/sshtest"
 )
 
@@ -311,4 +313,94 @@ func TestConnectionsNeedUnlockedVault(t *testing.T) {
 	h.login()
 	wantError(t, h.do("GET", "/api/v1/connections", nil), http.StatusServiceUnavailable, "vault_locked")
 	wantError(t, h.do("POST", "/api/v1/connections/probe", map[string]any{"host": "h", "port": 22}), http.StatusServiceUnavailable, "vault_locked")
+}
+
+// ---- test connection ----
+
+// keyAndServer generates a key through the API and starts an SSH server that
+// authorizes it (or nobody, when authorize is false).
+func (h *harness) keyAndServer(authorize bool, opts ...sshtest.Option) (keyID string, pub ssh.PublicKey, srv *sshtest.Server) {
+	h.t.Helper()
+	k := h.genKey("key-" + model.NewID())
+	pub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(k["public_key"].(string)))
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	if authorize {
+		opts = append(opts, sshtest.WithAuthorized(pub))
+	}
+	return k["id"].(string), pub, sshtest.Start(h.t, opts...)
+}
+
+func (h *harness) testConn(id string) map[string]any {
+	h.t.Helper()
+	return wantStatus(h.t, h.do("POST", "/api/v1/connections/"+id+"/test", nil), http.StatusOK)
+}
+
+func TestConnectionTestOK(t *testing.T) {
+	h := readyHarness(t)
+	keyID, _, srv := h.keyAndServer(true)
+	c := wantStatus(t, h.do("POST", "/api/v1/connections", sshBody("c", srv, keyID, h.probe(srv))), http.StatusCreated)
+	res := h.testConn(c["id"].(string))
+	if res["ok"] != true || res["kind"] != "" || res["message"] != "" || len(res) != 3 {
+		t.Errorf("test = %v", res)
+	}
+}
+
+func TestConnectionTestAuth(t *testing.T) {
+	h := readyHarness(t)
+	keyID, _, srv := h.keyAndServer(false)
+	c := wantStatus(t, h.do("POST", "/api/v1/connections", sshBody("c", srv, keyID, h.probe(srv))), http.StatusCreated)
+	res := h.testConn(c["id"].(string))
+	if res["ok"] != false || res["kind"] != "auth" || res["message"] == "" {
+		t.Errorf("test = %v", res)
+	}
+}
+
+func TestConnectionTestHostKeyChanged(t *testing.T) {
+	h := readyHarness(t)
+	keyID, pub, srv := h.keyAndServer(true)
+	c := wantStatus(t, h.do("POST", "/api/v1/connections", sshBody("c", srv, keyID, h.probe(srv))), http.StatusCreated)
+	if res := h.testConn(c["id"].(string)); res["ok"] != true {
+		t.Fatalf("before the change: %v", res)
+	}
+	addr := srv.Addr()
+	srv.Close()
+	sshtest.Start(t, sshtest.WithListen(addr), sshtest.WithAuthorized(pub)) // same address, new host key
+	res := h.testConn(c["id"].(string))
+	if res["ok"] != false || res["kind"] != "host_key" {
+		t.Errorf("test = %v", res)
+	}
+}
+
+func TestConnectionTestWebDAV(t *testing.T) {
+	h := readyHarness(t)
+	var gotPass string
+	dav := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, gotPass, _ = r.BasicAuth()
+		if gotPass != davPass {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusMultiStatus)
+	}))
+	defer dav.Close()
+	b := davBody("dav")
+	b["url"] = dav.URL + "/dav/"
+	c := wantStatus(t, h.do("POST", "/api/v1/connections", b), http.StatusCreated)
+	if res := h.testConn(c["id"].(string)); res["ok"] != true {
+		t.Errorf("test = %v", res)
+	}
+	b["password"], b["version"] = "wrong-password", 1
+	wantStatus(t, h.do("PUT", "/api/v1/connections/"+c["id"].(string), b), http.StatusOK)
+	w := h.do("POST", "/api/v1/connections/"+c["id"].(string)+"/test", nil)
+	res := wantStatus(t, w, http.StatusOK)
+	if res["ok"] != false || res["kind"] != "auth" || strings.Contains(w.Body.String(), "wrong-password") {
+		t.Errorf("test = %s", w.Body)
+	}
+}
+
+func TestConnectionTestUnknown(t *testing.T) {
+	h := readyHarness(t)
+	wantError(t, h.do("POST", "/api/v1/connections/nope/test", nil), http.StatusNotFound, "not_found")
 }
