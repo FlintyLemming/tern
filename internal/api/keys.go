@@ -3,10 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
-	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"tern/internal/auth"
 	"tern/internal/model"
@@ -39,20 +36,6 @@ func keyView(k model.SSHKey) keyJSON {
 		ID: k.ID, Version: k.Version, Name: k.Name, PublicKey: k.PublicKey, Fingerprint: k.Fingerprint,
 		HasPassphrase: k.HasPassphrase, CreatedAt: rfc3339(k.CreatedAt), UpdatedAt: rfc3339(k.UpdatedAt),
 	}
-}
-
-// checkName validates an object's display name: 1–64 characters, no control
-// characters, no surrounding whitespace. It returns "" or an error code.
-func checkName(s string) string {
-	switch {
-	case s == "":
-		return "required"
-	case utf8.RuneCountInString(s) > 64:
-		return "too_long"
-	case !utf8.ValidString(s) || s != strings.TrimSpace(s) || strings.IndexFunc(s, unicode.IsControl) >= 0:
-		return "invalid"
-	}
-	return ""
 }
 
 // storeError answers the store errors every resource handler shares.
@@ -95,7 +78,7 @@ func (a *API) handleCreateKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fields := map[string]string{}
-	if c := checkName(req.Name); c != "" {
+	if c := model.CheckName(req.Name); c != "" {
 		fields["name"] = c
 	}
 	switch req.Mode {
@@ -176,7 +159,7 @@ func (a *API) handleRenameKey(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	if c := checkName(req.Name); c != "" {
+	if c := model.CheckName(req.Name); c != "" {
 		writeError(w, http.StatusBadRequest, "validation", "invalid ssh key request", map[string]string{"name": c})
 		return
 	}
