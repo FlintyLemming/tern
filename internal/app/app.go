@@ -15,6 +15,7 @@ import (
 	"tern/internal/api"
 	"tern/internal/auth"
 	"tern/internal/config"
+	"tern/internal/rundir"
 	"tern/internal/store"
 	"tern/internal/vault"
 )
@@ -45,7 +46,29 @@ func Start(ctx context.Context, cfg config.Config, version string) (*App, error)
 	return a, nil
 }
 
+// prepareRuntimeDir makes cfg.RuntimeDir a private, empty tmpfs directory.
+// It runs only once the data directory lock is held, so the leftovers it
+// removes cannot belong to a live process.
+func prepareRuntimeDir(dir string) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("create runtime directory: %w", err)
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return fmt.Errorf("runtime directory: %w", err)
+	}
+	if err := rundir.VerifyTmpfs(dir); err != nil {
+		return err
+	}
+	if err := rundir.Sweep(dir); err != nil {
+		return fmt.Errorf("clear runtime directory: %w", err)
+	}
+	return nil
+}
+
 func startWithStore(ctx context.Context, cfg config.Config, version string, st *store.Store) (*App, error) {
+	if err := prepareRuntimeDir(cfg.RuntimeDir); err != nil {
+		return nil, err
+	}
 	v := vault.New(st, cfg.SecretsDir)
 	state, err := v.Load(ctx)
 	if err != nil {

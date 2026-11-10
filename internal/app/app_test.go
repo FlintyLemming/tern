@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -29,8 +30,23 @@ func testCfg(t *testing.T) config.Config {
 		Listen:     "127.0.0.1:0",
 		DataDir:    filepath.Join(t.TempDir(), "data"),
 		SecretsDir: t.TempDir(),
-		RuntimeDir: t.TempDir(),
+		RuntimeDir: runtimeDir(t),
 	}
+}
+
+// runtimeDir is a fresh directory that passes the tmpfs check: on Linux it
+// has to be on a real tmpfs, elsewhere the check is a no-op.
+func runtimeDir(t *testing.T) string {
+	t.Helper()
+	if runtime.GOOS != "linux" {
+		return t.TempDir()
+	}
+	dir, err := os.MkdirTemp("/dev/shm", "tern-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	return dir
 }
 
 func start(t *testing.T, cfg config.Config) *App {
@@ -168,4 +184,61 @@ func TestStartFailsOnBadTLSFiles(t *testing.T) {
 	// The failed Start released the data directory.
 	cfg.TLSCert, cfg.TLSKey = "", ""
 	start(t, cfg)
+}
+
+func TestStartPreparesRuntimeDir(t *testing.T) {
+	cfg := testCfg(t)
+	cfg.RuntimeDir = filepath.Join(cfg.RuntimeDir, "tern")
+	// Leftovers of a previous process that died mid-run.
+	stale := filepath.Join(cfg.RuntimeDir, "old-run")
+	if err := os.MkdirAll(stale, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stale, "ssh_config"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(cfg.RuntimeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	start(t, cfg)
+	fi, err := os.Stat(cfg.RuntimeDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm() != 0o700 {
+		t.Errorf("runtime dir mode = %o", fi.Mode().Perm())
+	}
+	if entries, _ := os.ReadDir(cfg.RuntimeDir); len(entries) != 0 {
+		t.Errorf("leftovers survived Start: %v", entries)
+	}
+}
+
+func TestStartCreatesRuntimeDir(t *testing.T) {
+	cfg := testCfg(t)
+	cfg.RuntimeDir = filepath.Join(cfg.RuntimeDir, "a", "tern")
+	start(t, cfg)
+	if fi, err := os.Stat(cfg.RuntimeDir); err != nil || fi.Mode().Perm() != 0o700 {
+		t.Errorf("runtime dir: %v, %v", fi, err)
+	}
+}
+
+// A second process that loses the race for the data directory must not wipe
+// the run directories of the one that is working.
+func TestLosingStartLeavesRuntimeDirAlone(t *testing.T) {
+	cfg := testCfg(t)
+	start(t, cfg)
+	live := filepath.Join(cfg.RuntimeDir, "live-run")
+	if err := os.Mkdir(live, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Listen = "127.0.0.1:0"
+	if b, err := Start(context.Background(), cfg, "test"); !errors.Is(err, store.ErrLockHeld) {
+		if b != nil {
+			b.Shutdown(context.Background())
+		}
+		t.Fatalf("second Start err = %v, want ErrLockHeld", err)
+	}
+	if _, err := os.Stat(live); err != nil {
+		t.Errorf("the losing Start swept a live run directory: %v", err)
+	}
 }
