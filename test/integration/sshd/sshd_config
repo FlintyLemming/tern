@@ -1,0 +1,22 @@
+Port 22
+AddressFamily any
+ListenAddress 0.0.0.0
+ListenAddress ::
+
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+AuthorizedKeysFile /keys/authorized_keys
+StrictModes no
+PermitRootLogin no
+AllowUsers backup
+
+Subsystem sftp internal-sftp
+
+# Tests open many connections at once, and several of them fail on purpose
+# (wrong key, probe that hangs up before authenticating). OpenSSH 9.8+ would
+# answer that with per-source penalties and start resetting the runner.
+PerSourcePenalties no
+MaxStartups 100:30:200
+MaxSessions 100
+LogLevel VERBOSE

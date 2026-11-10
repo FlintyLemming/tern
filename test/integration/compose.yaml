@@ -1,0 +1,58 @@
+# Integration test environment: a real sshd as the remote end and a runner
+# with the pinned tools. Start it with `make itest`.
+#
+# Base images come from Docker Hub unless TERN_BASE_REGISTRY names a mirror of
+# its official images, e.g. TERN_BASE_REGISTRY=public.ecr.aws/docker/library.
+name: tern-itest
+
+services:
+  sshd:
+    build:
+      context: ./sshd
+      args:
+        BASE_REGISTRY: ${TERN_BASE_REGISTRY:-docker.io/library}
+    cap_add: [NET_ADMIN] # traffic shaping for the weak-network tests
+    volumes:
+      - keys:/keys
+      - remote:/srv
+    networks: [itest]
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "22"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+
+  runner:
+    build:
+      context: ../..
+      dockerfile: test/integration/runner.Dockerfile
+      args:
+        BASE_REGISTRY: ${TERN_BASE_REGISTRY:-docker.io/library}
+    depends_on:
+      sshd:
+        condition: service_healthy
+    working_dir: /src
+    environment:
+      TERN_ITEST_SSH_HOST: sshd
+      TERN_ITEST_SSH_USER: backup
+    volumes:
+      - ../..:/src
+      - keys:/keys
+      - gomod:/go/pkg/mod
+      - gocache:/root/.cache/go-build
+    networks: [itest]
+    # /dev/shm stays Docker's default tmpfs: run directories live there.
+
+networks:
+  itest:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.31.77.0/24
+        - subnet: fd7e:7e12:1::/64
+
+volumes:
+  keys:
+  remote:
+  gomod:
+  gocache:
