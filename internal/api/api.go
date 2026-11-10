@@ -55,6 +55,7 @@ func New(d Deps) *API {
 	a.Handle("POST /api/v1/logout", a.handleLogout, NeedSession)
 	a.Handle("GET /api/v1/session", a.handleSession, NeedSession)
 	a.Handle("POST /api/v1/unlock", a.handleUnlock, NeedSession)
+	a.registerKeys()
 
 	// Anything else under /api/, including a known path with the wrong method.
 	a.mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
