@@ -374,6 +374,9 @@ func TestSwitchKeyfileToPassphrase(t *testing.T) {
 	if after, _ := e.meta(t, "vault.dek"); after == before {
 		t.Error("vault.dek did not change")
 	}
+	if _, err := os.Stat(e.keyPath()); !os.IsNotExist(err) {
+		t.Errorf("master.key still exists after switching to passphrase mode (stat err = %v)", err)
+	}
 	v2, st := e.fresh(t)
 	if st != StateLocked {
 		t.Fatalf("fresh state = %q, want locked", st)
@@ -410,5 +413,39 @@ func TestSwitchPassphraseToKeyfile(t *testing.T) {
 	locked, _ := e2.fresh(t)
 	if err := locked.SwitchMode(ctx, ModeKeyfile, ""); !errors.Is(err, ErrLocked) {
 		t.Errorf("SwitchMode on locked vault err = %v, want ErrLocked", err)
+	}
+}
+
+// The switch itself is committed even when the old key file cannot be removed
+// (read-only /secrets); the caller is told so it can warn the user.
+func TestSwitchReportsKeyfileItCannotRemove(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	ctx := context.Background()
+	e := newEnv(t)
+	v := e.initVault(t, ModeKeyfile)
+	s := mustSeal(t, v, "x/1/f", []byte("kept"))
+	os.Chmod(e.secrets, 0o500)
+	defer os.Chmod(e.secrets, 0o700)
+	err := v.SwitchMode(ctx, ModePassphrase, testPass)
+	if !errors.Is(err, ErrKeyfileNotRemoved) {
+		t.Fatalf("SwitchMode err = %v, want ErrKeyfileNotRemoved", err)
+	}
+	if !strings.Contains(err.Error(), e.keyPath()) {
+		t.Errorf("error %q does not name the key file", err)
+	}
+	if v.Mode() != ModePassphrase || v.State() != StateUnlocked {
+		t.Fatalf("mode=%q state=%q, want passphrase/unlocked", v.Mode(), v.State())
+	}
+	v2, st := e.fresh(t)
+	if st != StateLocked {
+		t.Fatalf("fresh state = %q, want locked", st)
+	}
+	if err := v2.Unlock(ctx, testPass); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := v2.Open("x/1/f", s); err != nil || string(got) != "kept" {
+		t.Fatalf("Open = (%q, %v)", got, err)
 	}
 }

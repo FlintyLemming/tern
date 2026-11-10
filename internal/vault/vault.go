@@ -12,6 +12,8 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -42,6 +44,9 @@ var (
 	ErrLocked             = errors.New("vault: locked")
 	ErrWrongPassphrase    = errors.New("vault: wrong passphrase")
 	ErrAlreadyInitialized = errors.New("vault: already initialized")
+	// ErrKeyfileNotRemoved is returned by SwitchMode when the switch to
+	// passphrase mode succeeded but the old key file is still on disk.
+	ErrKeyfileNotRemoved = errors.New("vault: switched to passphrase mode, but the old key file could not be removed")
 )
 
 const (
@@ -150,7 +155,9 @@ func (v *Vault) Init(ctx context.Context, mode Mode, passphrase string) error {
 }
 
 // SwitchMode re-wraps the data key for another mode (or a new passphrase).
-// Sealed credentials are untouched.
+// Sealed credentials are untouched. Leaving key-file mode deletes the key
+// file; if that fails the switch still stands and ErrKeyfileNotRemoved is
+// returned.
 func (v *Vault) SwitchMode(ctx context.Context, mode Mode, passphrase string) error {
 	v.mu.Lock()
 	defer v.mu.Unlock()
@@ -161,7 +168,15 @@ func (v *Vault) SwitchMode(ctx context.Context, mode Mode, passphrase string) er
 	if err := v.wrapAndStore(ctx, mode, passphrase, v.dek); err != nil {
 		return err
 	}
+	prev := v.mode
 	v.mode = mode
+	if prev == ModeKeyfile && mode == ModePassphrase {
+		// The data key does not rotate, so the old key file together with any
+		// old copy of the database would still open every credential.
+		if err := os.Remove(v.keyPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("%w: delete %s by hand: %v", ErrKeyfileNotRemoved, v.keyPath, err)
+		}
+	}
 	return nil
 }
 
