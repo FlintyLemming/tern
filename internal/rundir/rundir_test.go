@@ -110,3 +110,25 @@ func TestSweepRemovesLeftovers(t *testing.T) {
 		t.Errorf("left behind: %v", entries)
 	}
 }
+
+// Sweep removes run directories, nothing else: a plain file in the base is
+// not something tern put there.
+func TestSweepLeavesFilesAlone(t *testing.T) {
+	base := t.TempDir()
+	if err := os.Mkdir(filepath.Join(base, "old-run"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	keep := filepath.Join(base, "not-ours")
+	if err := os.WriteFile(keep, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Sweep(base); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(keep); err != nil {
+		t.Errorf("Sweep removed a plain file: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(base, "old-run")); !os.IsNotExist(err) {
+		t.Errorf("run directory survived: %v", err)
+	}
+}

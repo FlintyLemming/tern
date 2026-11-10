@@ -220,3 +220,26 @@ func TestConcurrentWriters(t *testing.T) {
 		}
 	}
 }
+
+// Secrets are registered while output is already flowing (a second
+// connection opens mid-run); that must not race with masking.
+func TestAddWhileWriting(t *testing.T) {
+	r := New()
+	r.Add([]byte("s3cr3t-pass"))
+	w := r.Writer(io.Discard)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 2000; i++ {
+			fmt.Fprintf(w, "line %d s3cr3t-pass\n", i)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 200; i++ {
+			r.Add([]byte(fmt.Sprintf("another-secret-%0*d", i%7+1, i)))
+		}
+	}()
+	wg.Wait()
+}

@@ -48,14 +48,20 @@ func (r *Redactor) Add(secret []byte) {
 			return
 		}
 	}
-	r.secrets = append(r.secrets, bytes.Clone(secret))
-	sort.SliceStable(r.secrets, func(i, j int) bool { return len(r.secrets[i]) > len(r.secrets[j]) })
+	// Copy on write: Writers iterate the slice they got from snapshot without
+	// holding the lock.
+	next := make([][]byte, 0, len(r.secrets)+1)
+	next = append(append(next, r.secrets...), bytes.Clone(secret))
+	sort.SliceStable(next, func(i, j int) bool { return len(next[i]) > len(next[j]) })
+	r.secrets = next
 }
 
+// snapshot returns the current secrets, longest first. The slice is never
+// modified after it is published.
 func (r *Redactor) snapshot() [][]byte {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.secrets[:len(r.secrets):len(r.secrets)]
+	return r.secrets
 }
 
 // Writer returns a line-buffered writer that masks what passes through on

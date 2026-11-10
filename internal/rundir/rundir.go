@@ -21,7 +21,8 @@ func checkName(name string) error {
 	return nil
 }
 
-// Sweep empties base: whatever is in there was left by a process that is gone.
+// Sweep removes every subdirectory of base: run directories left by a process
+// that is gone. Plain files are not tern's and stay.
 func Sweep(base string) error {
 	entries, err := os.ReadDir(base)
 	if err != nil {
@@ -29,6 +30,9 @@ func Sweep(base string) error {
 	}
 	var errs []error
 	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
 		errs = append(errs, os.RemoveAll(filepath.Join(base, e.Name())))
 	}
 	return errors.Join(errs...)
