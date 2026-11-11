@@ -22,6 +22,41 @@ services:
       timeout: 2s
       retries: 30
 
+  # The same server without rsync installed.
+  sshd-norsync:
+    build:
+      context: ./sshd
+      args:
+        BASE_REGISTRY: ${TERN_BASE_REGISTRY:-docker.io/library}
+        WITH_RSYNC: "0"
+    volumes:
+      - keys:/keys
+    networks: [itest]
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "22"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+
+  # A WebDAV server over the same remote volume, under /srv/dav. Tests write
+  # into that directory behind the server's back, so it must not cache
+  # directory listings.
+  webdav:
+    build:
+      context: ../..
+      dockerfile: test/integration/runner.Dockerfile
+      args:
+        BASE_REGISTRY: ${TERN_BASE_REGISTRY:-docker.io/library}
+    command: ["sh", "-c", "mkdir -p /srv/dav && exec rclone serve webdav /srv/dav --addr :8081 --user dav --pass itest-dav-pass --dir-cache-time 0s --poll-interval 0"]
+    volumes:
+      - remote:/srv
+    networks: [itest]
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "8081"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+
   runner:
     build:
       context: ../..
@@ -31,13 +66,23 @@ services:
     depends_on:
       sshd:
         condition: service_healthy
+      sshd-norsync:
+        condition: service_healthy
+      webdav:
+        condition: service_healthy
     working_dir: /src
     environment:
       TERN_ITEST_SSH_HOST: sshd
       TERN_ITEST_SSH_USER: backup
+      TERN_ITEST_NORSYNC_HOST: sshd-norsync
+      TERN_ITEST_WEBDAV_URL: http://webdav:8081
+      TERN_ITEST_WEBDAV_USER: dav
+      TERN_ITEST_WEBDAV_PASS: itest-dav-pass
     volumes:
       - ../..:/src
       - keys:/keys
+      # The remote end's /srv, for tests that look at what a sync left there.
+      - remote:/remote
       - gomod:/go/pkg/mod
       - gocache:/root/.cache/go-build
     networks: [itest]

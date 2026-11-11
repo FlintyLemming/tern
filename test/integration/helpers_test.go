@@ -5,6 +5,7 @@
 package integration
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
@@ -338,6 +339,15 @@ func (a *testApp) must(want int, method, path string, body any, out any) {
 // hand it to plain ssh and restic.
 func (a *testApp) sshConnection(t *testing.T) string {
 	t.Helper()
+	host := env(t, "TERN_ITEST_SSH_HOST")
+	return a.sshConnectionAt(t, host, host)
+}
+
+// sshConnectionAt is sshConnection to host, confirming the host key that
+// keyHost presents: a different keyHost makes a connection whose host key
+// does not match, as after the remote end was reinstalled.
+func (a *testApp) sshConnectionAt(t *testing.T, host, keyHost string) string {
+	t.Helper()
 	privPEM, p, err := sshx.Generate()
 	if err != nil {
 		t.Fatal(err)
@@ -348,8 +358,8 @@ func (a *testApp) sshConnection(t *testing.T) string {
 		Authorized string `json:"authorized"`
 	}
 	a.must(http.StatusCreated, "POST", "/api/v1/ssh-keys", map[string]any{"name": "key-" + model.NewID(), "mode": "import", "private_key": string(privPEM)}, &key)
-	host, user := env(t, "TERN_ITEST_SSH_HOST"), env(t, "TERN_ITEST_SSH_USER")
-	a.must(http.StatusOK, "POST", "/api/v1/connections/probe", map[string]any{"host": host, "port": 22}, &probe)
+	user := env(t, "TERN_ITEST_SSH_USER")
+	a.must(http.StatusOK, "POST", "/api/v1/connections/probe", map[string]any{"host": keyHost, "port": 22}, &probe)
 	a.must(http.StatusCreated, "POST", "/api/v1/connections", map[string]any{"type": "ssh", "name": "conn-" + model.NewID(),
 		"host": host, "port": 22, "username": user, "ssh_key_id": key.ID, "host_key": probe.Authorized}, &conn)
 	a.mu.Lock()
@@ -461,4 +471,75 @@ func randomFile(t *testing.T, path string, size int64) {
 	if _, err := io.CopyN(f, rand.Reader, size); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// webdavConnection creates a connection to the test WebDAV server, whose
+// root is /srv/dav on the remote volume.
+func (a *testApp) webdavConnection(t *testing.T) string {
+	t.Helper()
+	var conn struct {
+		ID string `json:"id"`
+	}
+	a.must(http.StatusCreated, "POST", "/api/v1/connections", map[string]any{"type": "webdav", "name": "dav-" + model.NewID(),
+		"url": env(t, "TERN_ITEST_WEBDAV_URL"), "username": env(t, "TERN_ITEST_WEBDAV_USER"), "password": env(t, "TERN_ITEST_WEBDAV_PASS")}, &conn)
+	return conn.ID
+}
+
+// remoteFS maps a path on the remote end, which lies under /srv, to where
+// the runner sees the same volume.
+func remoteFS(t *testing.T, remotePath string) string {
+	t.Helper()
+	rel, ok := strings.CutPrefix(remotePath, "/srv")
+	if !ok || (rel != "" && !strings.HasPrefix(rel, "/")) {
+		t.Fatalf("%s is not under /srv", remotePath)
+	}
+	return "/remote" + rel
+}
+
+// cancelWhen follows the run on the event stream and cancels it as soon as
+// a progress report satisfies cond. The run must still be going then.
+func (a *testApp) cancelWhen(t *testing.T, runID string, cond func(model.Progress) bool) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", a.base+"/api/v1/events", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := a.c.Do(req)
+	if err != nil {
+		t.Fatalf("GET /api/v1/events: %v", err)
+	}
+	defer resp.Body.Close()
+	sc := bufio.NewScanner(resp.Body)
+	sc.Buffer(nil, 4<<20)
+	event := ""
+	for sc.Scan() {
+		line := sc.Text()
+		if name, ok := strings.CutPrefix(line, "event: "); ok {
+			event = name
+			continue
+		}
+		data, ok := strings.CutPrefix(line, "data: ")
+		if !ok {
+			continue
+		}
+		switch event {
+		case "run.progress":
+			var p struct {
+				RunID    string         `json:"run_id"`
+				Progress model.Progress `json:"progress"`
+			}
+			if json.Unmarshal([]byte(data), &p) == nil && p.RunID == runID && cond(p.Progress) {
+				a.must(http.StatusAccepted, "POST", "/api/v1/runs/"+runID+"/cancel", nil, nil)
+				return
+			}
+		case "run.updated":
+			var run model.Run
+			if json.Unmarshal([]byte(data), &run) == nil && run.ID == runID && run.Status.Terminal() {
+				t.Fatalf("run %s ended %s before it could be canceled\n%s", runID, run.Status, a.runLog(runID))
+			}
+		}
+	}
+	t.Fatalf("the event stream ended before run %s could be canceled: %v", runID, sc.Err())
 }
