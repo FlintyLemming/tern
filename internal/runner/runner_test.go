@@ -705,3 +705,31 @@ func TestFinishedCalledBeforeFinalEvent(t *testing.T) {
 		t.Fatal("no final event")
 	}
 }
+
+// Review focus 4: on shutdown the post-task command still runs, but only for
+// ShutdownHookCap, so the process finishes within docker's grace period.
+func TestShutdownCapsPostHook(t *testing.T) {
+	old := ShutdownHookCap
+	ShutdownHookCap = time.Second
+	t.Cleanup(func() { ShutdownHookCap = old })
+
+	eng := &fake.Engine{Block: make(chan struct{})}
+	f := newFx(t, eng)
+	f.task.Post.Script = `echo "post started" >> ` + f.hookLog + `; sleep 600`
+	f.task.Post.TimeoutSec = 600
+	ctx, cancel := context.WithCancelCause(context.Background())
+	ch := f.start(ctx)
+	eng.WaitCalls(2) // preflight, unit:0 — now blocked
+	began := time.Now()
+	cancel(ErrShutdown)
+	run := f.stored(f.wait(ch))
+	if took := time.Since(began); took > 5*time.Second {
+		t.Errorf("Execute returned %s after the shutdown, want about %s", took, ShutdownHookCap)
+	}
+	if run.Status != model.StatusInterrupted {
+		t.Errorf("run = %+v", run)
+	}
+	if got := f.hookLines(); len(got) != 1 || got[0] != "post started" {
+		t.Errorf("the post-task command did not run: %q", got)
+	}
+}

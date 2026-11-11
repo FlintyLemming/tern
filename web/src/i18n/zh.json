@@ -61,6 +61,8 @@
     "rate_limited": "尝试次数太多，请稍后再试",
     "internal": "服务器内部错误，详见 tern 的日志",
     "already_setup": "这个节点已经初始化过了",
+    "data_not_mounted": "/data 没有挂载到宿主机，在 compose 文件里加上 ./data:/data 后重启",
+    "secrets_not_mounted": "/secrets 没有挂载，加上 ./secrets:/secrets 后重启，或者改用口令解锁",
     "vault_locked": "保险箱已锁定，请先解锁",
     "vault_unavailable": "保险箱打不开，检查 secrets 目录",
     "host_key_required": "请先获取并确认对端指纹",
@@ -146,7 +148,10 @@
     "submit": "完成初始化",
     "summary_node": "节点名",
     "summary_mode": "解锁方式",
-    "summary_note": "管理员密码和口令不会显示在这里，请自己记好。"
+    "summary_note": "管理员密码和口令不会显示在这里，请自己记好。",
+    "no_data_title": "数据目录没有挂载",
+    "no_data": "/data 没有挂载到宿主机。现在继续的话，所有设置会在容器重建时丢失。在 compose 文件里加上 ./data:/data 后重启。",
+    "no_secrets": "/secrets 没有挂载。加上 ./secrets:/secrets 后重启，或者改用口令解锁。"
   },
   "login": {
     "title": "登录",

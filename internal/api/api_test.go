@@ -29,6 +29,7 @@ import (
 	"tern/internal/runner"
 	"tern/internal/scheduler"
 	"tern/internal/store"
+	"tern/internal/sysinfo"
 	"tern/internal/vault"
 )
 
@@ -72,6 +73,8 @@ type harness struct {
 	check func(connID string) error
 	// notMounted makes every path look like it is off the mounted volumes.
 	notMounted bool
+	// mounts is what the API is told about /data and /secrets at startup.
+	mounts sysinfo.Mounts
 	// reg is the engine registry of the runner and the API; a test can
 	// register a real builder over it.
 	reg *engine.Registry
@@ -141,7 +144,8 @@ func newHarness(t *testing.T) *harness {
 	}
 	t.Cleanup(func() { st.Close() })
 	h := &harness{t: t, st: st, secrets: t.TempDir(), now: time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC),
-		dataDir: t.TempDir(), runtimeDir: shortDir(t), engines: map[string]*fake.Engine{}, restic: restictest.New(t)}
+		dataDir: t.TempDir(), runtimeDir: shortDir(t), engines: map[string]*fake.Engine{}, restic: restictest.New(t),
+		mounts: sysinfo.Mounts{Data: true, Secrets: true}}
 	t.Cleanup(func() { h.stopCore() }) // before the store closes
 	h.restart()
 	return h
@@ -192,6 +196,7 @@ func (h *harness) restart() {
 		Access:    harnessAccess{h: h, real: access.Opener{Store: h.st, Vault: h.vault}},
 		ResticBin: h.restic.Bin,
 		Mounted:   func(string) (bool, error) { return !h.notMounted, nil },
+		Mounts:    h.mounts,
 		Store:     h.st,
 		Vault:     h.vault,
 		Sessions:  auth.NewSessions(h.st.DB(), now),

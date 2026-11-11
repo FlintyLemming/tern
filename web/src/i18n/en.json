@@ -61,6 +61,8 @@
     "rate_limited": "Too many attempts; try again later",
     "internal": "Internal error; see the tern log",
     "already_setup": "This node has already been set up",
+    "data_not_mounted": "/data is not mounted from the host; add ./data:/data to the compose file and restart",
+    "secrets_not_mounted": "/secrets is not mounted; add ./secrets:/secrets and restart, or use a passphrase instead",
     "vault_locked": "The vault is locked; unlock it first",
     "vault_unavailable": "The vault cannot be opened; check the secrets directory",
     "host_key_required": "Fetch and confirm the host fingerprint first",
@@ -146,7 +148,10 @@
     "submit": "Finish setup",
     "summary_node": "Node name",
     "summary_mode": "Unlock mode",
-    "summary_note": "The admin password and passphrase are not shown here; make sure you keep them."
+    "summary_note": "The admin password and passphrase are not shown here; make sure you keep them.",
+    "no_data_title": "The data directory is not mounted",
+    "no_data": "/data is not mounted from the host. If you went on, every setting would be lost when the container is recreated. Add ./data:/data to the compose file and restart.",
+    "no_secrets": "/secrets is not mounted. Add ./secrets:/secrets and restart, or use a passphrase instead."
   },
   "login": {
     "title": "Log in",

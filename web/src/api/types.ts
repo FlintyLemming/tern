@@ -19,11 +19,18 @@ export type VaultState = 'uninitialized' | 'unlocked' | 'locked' | 'keyfile_miss
 export type UnlockMode = 'keyfile' | 'passphrase'
 export type ErrKind = '' | 'network' | 'unknown' | 'auth' | 'host_key' | 'config' | 'data' | 'guard'
 
+// Whether /data and /secrets are volumes mounted into the container.
+export interface Mounts {
+  data: boolean
+  secrets: boolean
+}
+
 export interface AppStatus {
   version: string
   setup_required: boolean
   vault_state: VaultState
   authenticated: boolean
+  mounts?: Mounts
 }
 
 export interface CsrfToken {
@@ -249,6 +256,7 @@ export interface SystemInfo {
   timezone: string
   bbr: BBR
   tools: Tool[]
+  mounts: Mounts
 }
 
 export interface Snapshot {

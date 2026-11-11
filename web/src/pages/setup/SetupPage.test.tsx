@@ -9,8 +9,13 @@ afterEach(() => vi.unstubAllGlobals())
 
 const good = 'correct horse battery'
 
-function renderSetup(reply: Parameters<typeof fakeFetch>[0][string] = { status: 201, body: { csrf_token: 'c' } }) {
-  const f = fakeFetch({ 'POST /api/v1/setup': reply })
+function renderSetup(reply: Parameters<typeof fakeFetch>[0][string] = { status: 201, body: { csrf_token: 'c' } }, mounts = { data: true, secrets: true }) {
+  // What the server says before and, once a setup request went out, after.
+  const status = () => {
+    const done = f.of('POST', '/api/v1/setup').length > 0
+    return { body: { version: 'test', setup_required: !done, vault_state: done ? 'unlocked' : 'uninitialized', authenticated: done, mounts } }
+  }
+  const f = fakeFetch({ 'GET /api/v1/status': status, 'POST /api/v1/setup': reply })
   const r = renderRoutes(<Route path="/setup" element={<SetupPage />} />, '/setup')
   return { f, ...r }
 }
@@ -33,14 +38,14 @@ it('setup: rejects short or mismatched passwords locally', async () => {
   await user.type(screen.getByLabelText('再输一遍'), good + 'x')
   await user.click(screen.getByRole('button', { name: '下一步' }))
   expect(screen.getByText('两次输入不一致')).toBeInTheDocument()
-  expect(f.calls).toHaveLength(0)
+  expect(f.of('POST', '/api/v1/setup')).toHaveLength(0)
 })
 
 it('setup: rejects a bad node name locally', async () => {
   const { f, user } = renderSetup()
   await fillStep1(user, good, good, 'NAS Home')
   expect(screen.getByText(/小写字母/, { selector: '.text-danger' })).toBeInTheDocument()
-  expect(f.calls).toHaveLength(0)
+  expect(f.of('POST', '/api/v1/setup')).toHaveLength(0)
 })
 
 it('setup: passphrase fields appear only in passphrase mode', async () => {
@@ -63,7 +68,7 @@ it('setup: submits the expected body', async () => {
   await user.click(screen.getByRole('button', { name: '下一步' }))
   await user.click(screen.getByRole('button', { name: '完成初始化' }))
   await waitFor(() => expect(f.of('POST', '/api/v1/setup')).toHaveLength(1))
-  expect(f.calls[0].body).toEqual({ password: good, node_name: 'nas-home', unlock_mode: 'keyfile' })
+  expect(f.of('POST', '/api/v1/setup')[0].body).toEqual({ password: good, node_name: 'nas-home', unlock_mode: 'keyfile' })
 })
 
 it('setup: passphrase mode sends the passphrase', async () => {
@@ -74,8 +79,8 @@ it('setup: passphrase mode sends the passphrase', async () => {
   await user.type(screen.getByLabelText('再输一遍口令'), 'another long secret')
   await user.click(screen.getByRole('button', { name: '下一步' }))
   await user.click(screen.getByRole('button', { name: '完成初始化' }))
-  await waitFor(() => expect(f.calls).toHaveLength(1))
-  expect(f.calls[0].body).toEqual({ password: good, node_name: 'nas-home', unlock_mode: 'passphrase', passphrase: 'another long secret' })
+  await waitFor(() => expect(f.of('POST', '/api/v1/setup')).toHaveLength(1))
+  expect(f.of('POST', '/api/v1/setup')[0].body).toEqual({ password: good, node_name: 'nas-home', unlock_mode: 'passphrase', passphrase: 'another long secret' })
 })
 
 it('setup: passphrase mode checks the passphrase locally', async () => {
@@ -86,7 +91,7 @@ it('setup: passphrase mode checks the passphrase locally', async () => {
   await user.type(screen.getByLabelText('再输一遍口令'), 'short')
   await user.click(screen.getByRole('button', { name: '下一步' }))
   expect(screen.getByText('至少 10 个字符')).toBeInTheDocument()
-  expect(f.calls).toHaveLength(0)
+  expect(f.of('POST', '/api/v1/setup')).toHaveLength(0)
 })
 
 it('setup: shows server field errors', async () => {
@@ -106,7 +111,7 @@ it('setup: clears secrets from state after success', async () => {
   await fillStep1(user)
   await user.click(screen.getByRole('button', { name: '下一步' }))
   await user.click(screen.getByRole('button', { name: '完成初始化' }))
-  await waitFor(() => expect(f.calls).toHaveLength(1))
+  await waitFor(() => expect(f.of('POST', '/api/v1/setup')).toHaveLength(1))
   await waitFor(() => expect(qc.getQueryData(['status'])).toMatchObject({ setup_required: false, authenticated: true }))
   await user.click(screen.getByRole('button', { name: '上一步' }))
   await user.click(screen.getByRole('button', { name: '上一步' }))
@@ -128,5 +133,22 @@ it('setup: the submit button waits for the request', async () => {
   await user.click(submit)
   expect(submit).toBeDisabled()
   release()
-  await waitFor(() => expect(f.calls).toHaveLength(1))
+  await waitFor(() => expect(f.of('POST', '/api/v1/setup')).toHaveLength(1))
+})
+
+it('blocks the wizard when /data is not mounted', async () => {
+  renderSetup(undefined, { data: false, secrets: true })
+  expect(await screen.findByText(/\.\/data:\/data/)).toBeInTheDocument()
+  expect(document.querySelectorAll('input, select, textarea')).toHaveLength(0)
+  expect(screen.queryByRole('button', { name: '下一步' })).toBeNull()
+})
+
+it('disables keyfile when /secrets is not mounted', async () => {
+  const { f, user } = renderSetup(undefined, { data: true, secrets: false })
+  await waitFor(() => expect(f.of('GET', '/api/v1/status')).toHaveLength(1))
+  await fillStep1(user)
+  expect(await screen.findByRole('radio', { name: /密钥文件/ })).toBeDisabled()
+  expect(screen.getByRole('radio', { name: /^口令/ })).toBeChecked()
+  expect(screen.getByText('/secrets 没有挂载。加上 ./secrets:/secrets 后重启，或者改用口令解锁。')).toBeInTheDocument()
+  expect(screen.getByLabelText('口令')).toBeInTheDocument()
 })

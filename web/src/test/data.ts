@@ -5,6 +5,7 @@ export const system: SystemInfo = {
   version: 'dev',
   timezone: 'Asia/Shanghai',
   bbr: { available: ['reno', 'cubic', 'bbr'], current: 'bbr', supported: true, active: true },
+  mounts: { data: true, secrets: true },
   tools: [
     { name: 'restic', version: '0.19.1', found: true },
     { name: 'rclone', version: '1.76.0', found: true },

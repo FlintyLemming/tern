@@ -15,6 +15,13 @@ import (
 
 var version = "dev"
 
+// shutdownBudget is how long the process may take to wind down after
+// SIGTERM. Runs in progress get SIGTERM, then proc.KillGrace (30 s) until
+// SIGKILL, then their post-task command (at most runner.ShutdownHookCap,
+// 60 s), then their record written. Docker's stop grace period (compose:
+// stop_grace_period 2m) has to be longer still.
+const shutdownBudget = 100 * time.Second
+
 func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
@@ -45,10 +52,7 @@ func run() error {
 	}
 	<-ctx.Done()
 
-	// Runs in progress get SIGTERM, then proc.KillGrace (30s) until SIGKILL,
-	// then their record written: leave room for that. The container's stop
-	// grace period has to be at least as long.
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownBudget)
 	defer cancel()
 	return a.Shutdown(shutdownCtx)
 }

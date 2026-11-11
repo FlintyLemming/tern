@@ -209,6 +209,10 @@ func (a *API) handleUnlockMode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "validation", "invalid unlock mode request", fields)
 		return
 	}
+	if mode == vault.ModeKeyfile && !a.d.Mounts.Secrets {
+		writeSecretsNotMounted(w)
+		return
+	}
 	if !a.confirmPassword(w, r, req.CurrentPassword) {
 		return
 	}
@@ -234,5 +238,6 @@ func (a *API) handleSystem(w http.ResponseWriter, r *http.Request) {
 		"timezone": time.Local.String(),
 		"bbr":      sysinfo.ReadBBR("/proc"),
 		"tools":    sysinfo.Tools(context.WithoutCancel(r.Context())), // cached: must not record a canceled probe
+		"mounts":   a.d.Mounts,
 	})
 }

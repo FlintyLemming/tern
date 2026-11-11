@@ -18,6 +18,8 @@ import (
 
 	"tern/internal/app"
 	"tern/internal/config"
+	"tern/internal/proc"
+	"tern/internal/runner"
 )
 
 // testEnv is the environment of a node with fresh directories, listening on
@@ -124,5 +126,21 @@ func TestHealthcheckTLS(t *testing.T) {
 
 	if code := healthcheck(getenv(env)); code != 0 {
 		t.Fatalf("healthcheck = %d, want 0", code)
+	}
+}
+
+// The stop budget of plan 7: docker's grace period (compose: 2m) > the
+// process's own wind-down (100 s) > child kill grace (30 s) + post-task
+// command on shutdown (60 s).
+func TestShutdownBudget(t *testing.T) {
+	const dockerGrace = 2 * time.Minute
+	if shutdownBudget != 100*time.Second {
+		t.Errorf("shutdownBudget = %s, want 100s", shutdownBudget)
+	}
+	if shutdownBudget >= dockerGrace {
+		t.Errorf("shutdownBudget %s does not fit docker's grace period %s", shutdownBudget, dockerGrace)
+	}
+	if need := proc.KillGrace + runner.ShutdownHookCap; shutdownBudget <= need {
+		t.Errorf("shutdownBudget %s leaves no room after kill grace and post-task command (%s)", shutdownBudget, need)
 	}
 }

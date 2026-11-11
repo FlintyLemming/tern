@@ -59,7 +59,19 @@ func (a *API) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"setup_required": !done,
 		"vault_state":    a.d.Vault.State(),
 		"authenticated":  authed,
+		"mounts":         a.d.Mounts,
 	})
+}
+
+// Refusals for writes that would land in the container's own layer.
+func writeDataNotMounted(w http.ResponseWriter) {
+	writeError(w, http.StatusBadRequest, "data_not_mounted",
+		"the data directory is not a mounted volume; everything would be lost when the container is recreated", nil)
+}
+
+func writeSecretsNotMounted(w http.ResponseWriter) {
+	writeError(w, http.StatusBadRequest, "secrets_not_mounted",
+		"the secrets directory is not a mounted volume; the key file would be lost when the container is recreated", nil)
 }
 
 func (a *API) handleSetup(w http.ResponseWriter, r *http.Request) {
@@ -70,6 +82,10 @@ func (a *API) handleSetup(w http.ResponseWriter, r *http.Request) {
 		Passphrase string `json:"passphrase"`
 	}
 	if !readJSON(w, r, &req) {
+		return
+	}
+	if !a.d.Mounts.Data {
+		writeDataNotMounted(w)
 		return
 	}
 
@@ -93,6 +109,10 @@ func (a *API) handleSetup(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(fields) > 0 {
 		writeError(w, http.StatusBadRequest, "validation", "invalid setup request", fields)
+		return
+	}
+	if mode == vault.ModeKeyfile && !a.d.Mounts.Secrets {
+		writeSecretsNotMounted(w)
 		return
 	}
 

@@ -31,6 +31,8 @@ func testCfg(t *testing.T) config.Config {
 		DataDir:    filepath.Join(t.TempDir(), "data"),
 		SecretsDir: t.TempDir(),
 		RuntimeDir: runtimeDir(t),
+		// Temporary directories are no volumes; setup would refuse them.
+		AllowUnmounted: true,
 	}
 }
 

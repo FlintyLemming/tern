@@ -11,6 +11,12 @@ type Config struct {
 	RuntimeDir string // TERN_RUNTIME_DIR, default "/dev/shm/tern"
 	TLSCert    string // TERN_TLS_CERT
 	TLSKey     string // TERN_TLS_KEY; both or neither
+
+	// AllowUnmounted (TERN_ALLOW_UNMOUNTED=1) treats the data and secrets
+	// directories as mounted volumes whatever they are. For development
+	// and tests only: in a container it lets setup write into the
+	// container's own layer, which is lost when the container is recreated.
+	AllowUnmounted bool
 }
 
 // Load reads the configuration through getenv (os.Getenv in production).
@@ -28,6 +34,8 @@ func Load(getenv func(string) string) (Config, error) {
 		RuntimeDir: or("TERN_RUNTIME_DIR", "/dev/shm/tern"),
 		TLSCert:    getenv("TERN_TLS_CERT"),
 		TLSKey:     getenv("TERN_TLS_KEY"),
+
+		AllowUnmounted: getenv("TERN_ALLOW_UNMOUNTED") == "1",
 	}
 	switch {
 	case c.TLSCert != "" && c.TLSKey == "":

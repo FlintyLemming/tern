@@ -182,7 +182,7 @@ func TestSwitchUnlockModeValidation(t *testing.T) {
 func TestSystemEndpoint(t *testing.T) {
 	h := readyHarness(t)
 	s := wantStatus(t, h.do("GET", "/api/v1/system", nil), http.StatusOK)
-	if len(s) != 4 || s["version"] != "test" || s["timezone"] != "UTC" {
+	if len(s) != 5 || s["version"] != "test" || s["timezone"] != "UTC" { // version, timezone, bbr, tools, mounts
 		t.Errorf("system = %v", s)
 	}
 	bbr, ok := s["bbr"].(map[string]any)

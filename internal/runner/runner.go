@@ -30,6 +30,12 @@ var (
 	errMaxRuntime = errors.New("max runtime exceeded")
 )
 
+// ShutdownHookCap bounds the post-task command of a run interrupted by
+// ErrShutdown: it gets min(its own timeout, ShutdownHookCap). Together with
+// proc.KillGrace this keeps the process within its shutdown budget and
+// that within docker's stop grace period.
+var ShutdownHookCap = 60 * time.Second
+
 const maxSummaryLen = 1000
 
 // Slot is the execution slot a run holds. The runner gives it up while it
@@ -245,7 +251,14 @@ func (x *execution) pipeline(parent context.Context, began time.Time) {
 		}
 		// Always runs, and is not cut short by the cancellation of the run:
 		// "stop service / start service" pairs must not be left half done.
-		if err := r.Hooks.Run(x.bg, task.Post, vars, x.out); err != nil {
+		// Only a shutdown bounds it, to what the process can still wait.
+		hctx := x.bg
+		if errors.Is(context.Cause(ctx), ErrShutdown) {
+			var cancel context.CancelFunc
+			hctx, cancel = context.WithTimeout(x.bg, ShutdownHookCap)
+			defer cancel()
+		}
+		if err := r.Hooks.Run(hctx, task.Post, vars, x.out); err != nil {
 			x.logf("post-task command failed: %v", err)
 			x.warn = true
 		}

@@ -48,3 +48,15 @@ func TestLoadTLSNeedsBoth(t *testing.T) {
 		t.Fatalf("key only: got %v, want error naming TERN_TLS_CERT", err)
 	}
 }
+
+func TestLoadAllowUnmounted(t *testing.T) {
+	for v, want := range map[string]bool{"": false, "1": true, "0": false, "true": false} {
+		got, err := Load(env(map[string]string{"TERN_ALLOW_UNMOUNTED": v}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.AllowUnmounted != want {
+			t.Errorf("TERN_ALLOW_UNMOUNTED=%q: AllowUnmounted = %v, want %v", v, got.AllowUnmounted, want)
+		}
+	}
+}

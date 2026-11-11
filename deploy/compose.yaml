@@ -1,0 +1,23 @@
+services:
+  tern:
+    image: tern:${TERN_VERSION:-latest}
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 2m
+    ports:
+      - "8080:8080"
+    environment:
+      TZ: Asia/Shanghai
+      # PUID: "1000"                         # 拉取同步落地文件的属主；不设则为 root
+      # PGID: "1000"
+    volumes:
+      - ./data:/data                         # 数据库、日志、restic 缓存
+      - ./secrets:/secrets                   # 主密钥文件，和 data 分开保管
+      - /share/Photos:/sources/photos:ro     # 只推送或备份的目录，只读挂载
+      - /share/Inbox:/targets/inbox          # 拉取同步的落地目录
+    sysctls:
+      net.ipv4.tcp_congestion_control: bbr   # 宿主机内核不支持时删掉这一行
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, DAC_READ_SEARCH, FOWNER, SETUID, SETGID]

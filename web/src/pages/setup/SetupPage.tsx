@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { request, setCsrf } from '../../api/client'
+import { useStatus } from '../../api/queries'
 import { errorText, fieldCodes, fieldText } from '../../api/errors'
 import type { CsrfToken, UnlockMode } from '../../api/types'
 import { cx } from '../../lib/cx'
@@ -24,10 +25,14 @@ export function SetupPage() {
   const [password, setPassword] = useState('')
   const [again, setAgain] = useState('')
   const [nodeName, setNodeName] = useState('')
-  const [mode, setMode] = useState<UnlockMode>('keyfile')
+  const [chosenMode, setMode] = useState<UnlockMode>('keyfile')
   const [passphrase, setPassphrase] = useState('')
   const [passAgain, setPassAgain] = useState('')
   const [errors, setErrors] = useState<Errors>({})
+  // Without the volumes the server refuses setup: say so before the form.
+  const mounts = useStatus().data?.mounts
+  const keyfileOK = mounts?.secrets !== false
+  const mode: UnlockMode = keyfileOK ? chosenMode : 'passphrase'
 
   const clearSecrets = () => {
     setPassword('')
@@ -89,6 +94,17 @@ export function SetupPage() {
 
   const general = setup.isError && Object.keys(fieldCodes(setup.error)).length === 0 ? errorText(t, setup.error) : undefined
 
+  if (mounts?.data === false) {
+    return (
+      <AuthCard title={t('setup.title')}>
+        <Banner tone="danger">
+          <p className="font-semibold">{t('setup.no_data_title')}</p>
+          <p className="mt-1">{t('setup.no_data')}</p>
+        </Banner>
+      </AuthCard>
+    )
+  }
+
   return (
     <AuthCard title={t('setup.title')}>
       <p className="mb-1 text-eyebrow text-ink-muted">{t('setup.step', { n: step })}</p>
@@ -112,28 +128,34 @@ export function SetupPage() {
           <>
             <fieldset className="flex flex-col gap-3">
               <legend className="sr-only">{t('setup.step2')}</legend>
-              {(['keyfile', 'passphrase'] as const).map((m) => (
-                <label
-                  key={m}
-                  className={cx(
-                    'flex cursor-pointer gap-3 rounded-md border p-4',
-                    mode === m ? 'border-primary' : 'border-hairline',
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name="unlock_mode"
-                    value={m}
-                    checked={mode === m}
-                    onChange={() => setMode(m)}
-                    className="mt-1 accent-[var(--color-primary)]"
-                  />
-                  <span className="flex flex-col gap-1">
-                    <span className="font-semibold">{t(`setup.mode_${m}`)}</span>
-                    <span className="text-caption text-ink-muted">{t(`setup.mode_${m}_desc`)}</span>
-                  </span>
-                </label>
-              ))}
+              {(['keyfile', 'passphrase'] as const).map((m) => {
+                const off = m === 'keyfile' && !keyfileOK
+                return (
+                  <label
+                    key={m}
+                    className={cx(
+                      'flex gap-3 rounded-md border p-4',
+                      off ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+                      mode === m ? 'border-primary' : 'border-hairline',
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="unlock_mode"
+                      value={m}
+                      checked={mode === m}
+                      disabled={off}
+                      onChange={() => setMode(m)}
+                      className="mt-1 accent-[var(--color-primary)]"
+                    />
+                    <span className="flex flex-col gap-1">
+                      <span className="font-semibold">{t(`setup.mode_${m}`)}</span>
+                      <span className="text-caption text-ink-muted">{t(`setup.mode_${m}_desc`)}</span>
+                      {off ? <span className="text-caption text-danger">{t('setup.no_secrets')}</span> : null}
+                    </span>
+                  </label>
+                )
+              })}
             </fieldset>
             {errors.unlock_mode ? <p className="text-caption text-danger">{errors.unlock_mode}</p> : null}
             {mode === 'passphrase' ? (

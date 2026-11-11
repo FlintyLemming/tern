@@ -16,6 +16,7 @@ import (
 	"tern/internal/runner"
 	"tern/internal/scheduler"
 	"tern/internal/store"
+	"tern/internal/sysinfo"
 	"tern/internal/vault"
 )
 
@@ -45,6 +46,10 @@ type Deps struct {
 	// Mounted tells whether a path is on a mounted volume; restores only
 	// go to such paths. Defaults to mounts.IsMounted.
 	Mounted func(path string) (bool, error)
+	// Mounts says whether the data and secrets directories were on
+	// mounted volumes at startup. Setup refuses to write where a
+	// recreated container would lose it.
+	Mounts sysinfo.Mounts
 }
 
 // API is the HTTP handler for the whole process.

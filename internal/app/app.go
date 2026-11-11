@@ -23,10 +23,12 @@ import (
 	"tern/internal/events"
 	"tern/internal/hooks"
 	"tern/internal/model"
+	"tern/internal/mounts"
 	"tern/internal/rundir"
 	"tern/internal/runner"
 	"tern/internal/scheduler"
 	"tern/internal/store"
+	"tern/internal/sysinfo"
 	"tern/internal/vault"
 	"tern/web"
 )
@@ -130,8 +132,19 @@ func startWithStore(ctx context.Context, cfg config.Config, version string, st *
 	// resumes scheduling once setup or unlock has happened.
 	sched.SetPaused(state != vault.StateUnlocked)
 
+	// Without these volumes the database or the key file would land in
+	// the container's own layer; setup refuses then, and the log says why.
+	mnt := sysinfo.CheckMounts(cfg, mounts.IsMounted)
+	if !mnt.Data {
+		slog.Warn("the data directory is not a mounted volume: setup is refused; add a volume for it, e.g. ./data:/data", "dir", cfg.DataDir)
+	}
+	if !mnt.Secrets {
+		slog.Warn("the secrets directory is not a mounted volume: key file mode is unavailable; add a volume for it, e.g. ./secrets:/secrets", "dir", cfg.SecretsDir)
+	}
+
 	h := api.New(api.Deps{
 		Cfg:       cfg,
+		Mounts:    mnt,
 		Store:     st,
 		Vault:     v,
 		Sessions:  auth.NewSessions(st.DB(), time.Now),
