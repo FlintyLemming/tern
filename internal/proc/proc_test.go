@@ -209,12 +209,26 @@ func TestKillsWholeProcessGroup(t *testing.T) {
 	}
 	// The grandchild is reparented and reaped by init, so give that a moment.
 	deadline := time.Now().Add(5 * time.Second)
-	for syscall.Kill(pid, 0) == nil {
+	for alive(pid) {
 		if time.Now().After(deadline) {
 			t.Fatalf("grandchild %d survived the cancel", pid)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+// alive reports whether pid is a running process. A zombie counts as dead:
+// in a container the orphan's new parent may be a PID 1 that never reaps.
+func alive(pid int) bool {
+	if syscall.Kill(pid, 0) != nil {
+		return false
+	}
+	stat, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+	if err != nil {
+		return true // no procfs (macOS): the signal probe is all there is
+	}
+	i := bytes.LastIndexByte(stat, ')')
+	return i < 0 || i+2 >= len(stat) || stat[i+2] != 'Z'
 }
 
 func TestCallbacksOptional(t *testing.T) {
