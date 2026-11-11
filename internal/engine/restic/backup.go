@@ -16,7 +16,40 @@ import (
 
 const unitBackup = "backup"
 
-type backupEngine struct{ *session }
+type backupEngine struct {
+	*session
+	// repair says the index has to be rebuilt before the next backup: an
+	// earlier one did not finish. See repairIndex.
+	repair bool
+}
+
+// repairIndex makes what an unfinished backup uploaded usable. restic
+// writes its index at the end of a backup (and every ten minutes or so
+// during one), so the data of a backup that was cut short sits in the
+// repository unindexed, and the next backup would upload all of it again:
+// on a weak link, the same hours lost each time. `restic repair index`
+// adds the packs that are there to the index. It needs the exclusive
+// lock; if somebody else is using the repository it fails, which only
+// costs the re-upload.
+func (e *backupEngine) repairIndex(ctx context.Context, env engine.Env) {
+	if !e.repair {
+		return
+	}
+	e.repair = false
+	fmt.Fprintln(env.Log, "an earlier backup did not finish: indexing what it uploaded")
+	if err := e.call(ctx, env, "repair", "index"); err != nil {
+		fmt.Fprintf(env.Log, "rebuilding the index failed, going on: %v\n", err)
+	}
+}
+
+// Cleanup runs before a retry.
+func (e *backupEngine) Cleanup(ctx context.Context, env engine.Env) error {
+	if err := e.session.Cleanup(ctx, env); err != nil {
+		return err
+	}
+	e.repairIndex(ctx, env)
+	return nil
+}
 
 func (e *backupEngine) Units() []string { return []string{unitBackup} }
 
@@ -81,6 +114,8 @@ func (e *backupEngine) RunUnit(ctx context.Context, env engine.Env, _ int) (mode
 		fmt.Fprintf(env.Log, "removing stale locks failed, going on: %v\n", err)
 	}
 
+	e.repairIndex(ctx, env)
+
 	excludes := filepath.Join(env.Dir.Path, "excludes")
 	lines := filter.ToRestic(spec.Excludes, spec.Sources)
 	content := ""
@@ -108,10 +143,12 @@ func (e *backupEngine) RunUnit(ctx context.Context, env engine.Env, _ int) (mode
 	)
 	res, err := e.exec(ctx, env, parser.Line, args...)
 	if err != nil {
+		e.repair = true
 		return out, err
 	}
 	kind, warning := ExitKind(res.ExitCode, res.StderrTail)
 	if kind != "" {
+		e.repair = true
 		return out, e.failure(env, "backup", res)
 	}
 	if sum, ok := parser.Summary(); ok {

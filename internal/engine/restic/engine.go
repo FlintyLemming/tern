@@ -56,7 +56,7 @@ func NewBuilder(d Deps) engine.Builder {
 		s := &session{d: d, task: t, conn: conn}
 		switch req.Kind {
 		case model.RunBackup:
-			return &backupEngine{s}, nil
+			return &backupEngine{session: s, repair: lastBackupUnfinished(d, t.ID)}, nil
 		case model.RunPrune:
 			return &maintEngine{session: s, unit: "prune"}, nil
 		case model.RunCheck:
@@ -70,6 +70,20 @@ func NewBuilder(d Deps) engine.Builder {
 		}
 		return nil, configErr("a backup task cannot do a %q run", req.Kind)
 	}
+}
+
+// lastBackupUnfinished reports whether the task's latest backup run was cut
+// short or failed, and so may have left unindexed data in the repository.
+func lastBackupUnfinished(d Deps, taskID string) bool {
+	last, ok, err := d.Store.LastRunOfKinds(context.Background(), taskID, model.RunBackup)
+	if err != nil || !ok {
+		return false
+	}
+	switch last.Status {
+	case model.StatusCanceled, model.StatusInterrupted, model.StatusFailed:
+		return true
+	}
+	return false
 }
 
 // session is what the engines of one run share: the task, and the opened

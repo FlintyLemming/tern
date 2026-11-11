@@ -452,7 +452,7 @@ func TestBackupFailureKinds(t *testing.T) {
 }
 
 func TestNeverRemoveAll(t *testing.T) {
-	f := newFx(t, stepOK, stepOK, fakeStep{Exit: 11}, stepOK, stepOK, stepOK, backupDone, stepOK)
+	f := newFx(t, stepOK, stepOK, fakeStep{Exit: 11}, stepOK, stepOK, stepOK, stepOK, backupDone, stepOK)
 	f.task.Backup.Keep.Last = 1
 	eng := f.ready(model.RunBackup, nil)
 	ctx := context.Background()
@@ -463,7 +463,7 @@ func TestNeverRemoveAll(t *testing.T) {
 		t.Fatal(err)
 	}
 	calls := f.fake.Calls()
-	if got := subs(calls); !reflect.DeepEqual(got, []string{"cat", "unlock", "backup", "unlock", "cat", "unlock", "backup", "forget"}) {
+	if got := subs(calls); !reflect.DeepEqual(got, []string{"cat", "unlock", "backup", "unlock", "repair", "cat", "unlock", "backup", "forget"}) {
 		t.Fatalf("calls = %q", got)
 	}
 	for _, c := range calls {
@@ -597,5 +597,85 @@ func TestDescribeQuotes(t *testing.T) {
 	lines := f.build(model.RunBackup, nil).Describe()
 	if want := "restic backup --host nas-1 --tag tern-" + f.task.ID + ` '/sources/my photos' '/sources/it'\''s'`; lines[2] != want {
 		t.Errorf("line 3 = %q, want %q", lines[2], want)
+	}
+}
+
+// What an interrupted backup uploaded is in the repository but in no
+// index, and restic would upload it again. Before the retry the index is
+// rebuilt so the next attempt finds it.
+func TestRepairIndexBeforeRetry(t *testing.T) {
+	f := newFx(t, stepOK, stepOK, fakeStep{Exit: 1, Stderr: "subprocess ssh: Connection reset by peer\n"})
+	eng := f.ready(model.RunBackup, nil)
+	ctx := context.Background()
+	if _, err := eng.RunUnit(ctx, f.env, 0); model.KindOf(err) != model.KindNetwork {
+		t.Fatalf("first attempt: %v", err)
+	}
+	before := len(f.fake.Calls())
+	if err := eng.Cleanup(ctx, f.env); err != nil {
+		t.Fatal(err)
+	}
+	calls := f.fake.Calls()[before:]
+	if !reflect.DeepEqual(subs(calls), []string{"unlock", "repair"}) || !calls[1].Has("repair", "index") {
+		t.Fatalf("Cleanup called %q", subs(calls))
+	}
+	// Once is enough: a second Cleanup without another failed backup
+	// only unlocks.
+	before = len(f.fake.Calls())
+	eng.Cleanup(ctx, f.env)
+	if got := f.fake.Subs()[before:]; !reflect.DeepEqual(got, []string{"unlock"}) {
+		t.Errorf("second Cleanup called %q", got)
+	}
+}
+
+func (f *fx) priorBackup(st model.Status) {
+	f.t.Helper()
+	ctx := context.Background()
+	at := time.Date(2026, 11, 10, 3, 0, 0, 0, time.UTC)
+	run := model.Run{ID: model.NewID(), TaskID: f.task.ID, TaskName: f.task.Name, Kind: model.RunBackup, Trigger: model.TriggerManual,
+		Status: model.StatusQueued, StartedAt: at}
+	if err := f.st.CreateRun(ctx, run); err != nil {
+		f.t.Fatal(err)
+	}
+	run.Status, run.FinishedAt = st, at
+	if _, err := f.st.FinalizeRun(ctx, run); err != nil {
+		f.t.Fatal(err)
+	}
+}
+
+// The same after a run that was canceled, interrupted or failed: the next
+// run rebuilds the index before it backs up.
+func TestRepairIndexAfterUnfinishedRun(t *testing.T) {
+	for _, st := range []model.Status{model.StatusCanceled, model.StatusInterrupted, model.StatusFailed} {
+		f := newFx(t, stepOK, stepOK, stepOK, backupDone)
+		f.priorBackup(st)
+		if _, err := runBackup(t, f); err != nil {
+			t.Fatal(err)
+		}
+		if got := f.fake.Subs(); !reflect.DeepEqual(got, []string{"cat", "unlock", "repair", "backup"}) {
+			t.Errorf("after a %s run, calls = %q", st, got)
+		}
+	}
+	for _, st := range []model.Status{model.StatusSuccess, model.StatusWarning, model.StatusSkipped} {
+		f := newFx(t, stepOK, stepOK, backupDone)
+		f.priorBackup(model.StatusFailed) // older, and followed by a good one
+		f.priorBackup(st)
+		if _, err := runBackup(t, f); err != nil {
+			t.Fatal(err)
+		}
+		if got := f.fake.Subs(); !reflect.DeepEqual(got, []string{"cat", "unlock", "backup"}) {
+			t.Errorf("after a %s run, calls = %q", st, got)
+		}
+	}
+}
+
+func TestRepairIndexFailureDoesNotStopBackup(t *testing.T) {
+	f := newFx(t, stepOK, stepOK, fakeStep{Exit: 11}, backupDone)
+	f.priorBackup(model.StatusCanceled)
+	res, err := runBackup(t, f)
+	if err != nil || res.Status != model.StatusSuccess {
+		t.Fatalf("RunUnit = %+v, %v", res, err)
+	}
+	if got := f.fake.Subs(); !reflect.DeepEqual(got, []string{"cat", "unlock", "repair", "backup"}) {
+		t.Errorf("calls = %q", got)
 	}
 }
