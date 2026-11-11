@@ -27,3 +27,19 @@ func TestBackupEngineRegistered(t *testing.T) {
 		t.Errorf("Build = %v, want the restic builder's complaint about the connection", err)
 	}
 }
+
+// Sync tasks get the sync engine; like the backup builder, it is the one
+// that complains about the missing connection.
+func TestSyncEngineRegistered(t *testing.T) {
+	st, err := store.Open(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	reg := newRegistry(config.Config{DataDir: t.TempDir()}, st, vault.New(st, t.TempDir()))
+	task := model.Task{Type: model.TaskSync, Name: "photos", Sync: &model.SyncSpec{Protocol: "rsync", ConnectionID: "missing"}}
+	_, err = reg.Build(task, engine.Request{Kind: model.RunSync})
+	if model.KindOf(err) != model.KindConfig || strings.Contains(err.Error(), "no engine") || !strings.Contains(err.Error(), "connection") {
+		t.Errorf("Build = %v, want the sync builder's complaint about the connection", err)
+	}
+}

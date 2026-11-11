@@ -208,4 +208,31 @@ func (p *planner) Transfer(ctx context.Context, env engine.Env, fp model.FolderP
 	return out, nil
 }
 
-func (p *planner) Describe(fp model.FolderPair) string { return "" }
+// Describe is the rsync command line that syncs the pair without tern:
+// plain ssh with the connection's port instead of tern's generated config.
+func (p *planner) Describe(fp model.FolderPair) string {
+	parts := []string{"rsync", "-aH", "--partial-dir=.tern-partial", "--timeout=60"}
+	if p.spec.DeleteMode == "mirror" {
+		parts = append(parts, "--delete")
+	}
+	if p.spec.LimitKiB > 0 {
+		parts = append(parts, fmt.Sprintf("--bwlimit=%d", p.spec.LimitKiB))
+	}
+	if p.spec.Compare == "checksum" {
+		parts = append(parts, "--checksum")
+	}
+	for _, rule := range filter.ToRsync(p.spec.Excludes) {
+		parts = append(parts, engine.ShellQuote("--exclude="+rule))
+	}
+	parts = append(parts, "-e", fmt.Sprintf(`"ssh -p %d"`, p.conn.Port))
+	host := p.conn.Host
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	// User and host are validated plain words; only the path needs quoting.
+	src, dst := engine.ShellQuote(dir(fp.Local)), p.conn.Username+"@"+host+":"+engine.ShellQuote(dir(fp.Remote))
+	if p.spec.Direction == "pull" {
+		src, dst = dst, src
+	}
+	return strings.Join(append(parts, src, dst), " ")
+}

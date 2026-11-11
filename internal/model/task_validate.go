@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -168,6 +169,7 @@ func (t Task) Validate() map[string]string {
 			set(fmt.Sprintf("sync.pairs[%d].local", i), checkLocalPath(p.Local))
 			set(fmt.Sprintf("sync.pairs[%d].remote", i), checkRemotePath(p.Remote))
 		}
+		pairOverlaps(s.Pairs, f)
 		excludes("sync.excludes", s.Excludes)
 		nonNeg("sync.max_deletes", s.MaxDeletes)
 		nonNeg("sync.limit_kib", s.LimitKiB)
@@ -178,4 +180,43 @@ func (t Task) Validate() map[string]string {
 		f["type"] = "invalid"
 	}
 	return f
+}
+
+// nested reports whether two clean paths are the same or one lies inside
+// the other. "/" holds every absolute path, "." every relative one.
+func nested(a, b string) bool {
+	under := func(child, parent string) bool {
+		switch parent {
+		case "/":
+			return strings.HasPrefix(child, "/")
+		case ".":
+			return !strings.HasPrefix(child, "/")
+		}
+		return strings.HasPrefix(child, parent+"/")
+	}
+	return a == b || under(a, b) || under(b, a)
+}
+
+// pairOverlaps marks a folder pair whose local or remote path is the same
+// as, or nested with, that of an earlier pair of the task: two pairs would
+// then sync the same files, and a mirror of one could delete what the other
+// just brought. Paths that are invalid already keep that error.
+func pairOverlaps(pairs []FolderPair, f map[string]string) {
+	for i := range pairs {
+		for j := 0; j < i; j++ {
+			for _, side := range []struct {
+				name string
+				a, b string
+			}{
+				{"local", filepath.Clean(pairs[j].Local), filepath.Clean(pairs[i].Local)},
+				{"remote", path.Clean(pairs[j].Remote), path.Clean(pairs[i].Remote)},
+			} {
+				field := fmt.Sprintf("sync.pairs[%d].%s", i, side.name)
+				earlier := fmt.Sprintf("sync.pairs[%d].%s", j, side.name)
+				if f[field] == "" && (f[earlier] == "" || f[earlier] == "overlaps") && nested(side.a, side.b) {
+					f[field] = "overlaps"
+				}
+			}
+		}
+	}
 }

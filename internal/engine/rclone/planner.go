@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -194,4 +195,46 @@ func (p *planner) Transfer(ctx context.Context, env engine.Env, fp model.FolderP
 	return out, nil
 }
 
-func (p *planner) Describe(fp model.FolderPair) string { return "" }
+// connValue quotes a value of an rclone connection string when it has
+// characters that would end it.
+func connValue(v string) string {
+	if strings.ContainsAny(v, `,:"'= `) {
+		return `"` + strings.ReplaceAll(v, `"`, `""`) + `"`
+	}
+	return v
+}
+
+// Describe is the rclone command line that syncs the pair without tern:
+// the remote as a connection string instead of tern's generated config,
+// and a placeholder where the WebDAV password goes.
+func (p *planner) Describe(fp model.FolderPair) string {
+	sub := "copy"
+	if p.spec.DeleteMode == "mirror" {
+		sub = "sync"
+	}
+	var target string
+	var opts []string
+	switch p.spec.Protocol {
+	case "webdav":
+		target = fmt.Sprintf(":webdav,url=%s,user=%s:%s", connValue(p.conn.URL), connValue(p.conn.Username), fp.Remote)
+		opts = append(opts, "--webdav-pass", `"$(rclone obscure '<WebDAV 密码>')"`)
+	default:
+		target = fmt.Sprintf(":sftp,host=%s,user=%s,port=%d:%s", connValue(p.conn.Host), connValue(p.conn.Username), p.conn.Port, fp.Remote)
+	}
+	src, dst := engine.ShellQuote(fp.Local), engine.ShellQuote(target)
+	if p.spec.Direction == "pull" {
+		src, dst = dst, src
+	}
+	parts := append([]string{"rclone", sub, src, dst}, opts...)
+	parts = append(parts, "--transfers", strconv.Itoa(p.spec.Transfers))
+	if p.spec.LimitKiB > 0 {
+		parts = append(parts, "--bwlimit", fmt.Sprintf("%dKi", p.spec.LimitKiB))
+	}
+	if p.spec.Compare == "checksum" {
+		parts = append(parts, "--checksum")
+	}
+	for _, line := range filter.ToRclone(p.spec.Excludes) {
+		parts = append(parts, "--filter", engine.ShellQuote(line))
+	}
+	return strings.Join(parts, " ")
+}

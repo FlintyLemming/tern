@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/cookiejar"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -80,16 +81,21 @@ func (c *client) call(method, path string, body any, want int) map[string]any {
 }
 
 // The whole chain through the real process wiring: setup resumes the
-// scheduler, a task is queued and executed, the result is stored and
-// streamed, and an open event stream does not hold up shutdown. No engine
-// is registered yet (plans 4 and 5), so the run fails with a config error.
+// scheduler, a task is queued and executed by the real sync engine, the
+// result is stored and streamed, and an open event stream does not hold up
+// shutdown. The WebDAV server answers the preflight; the local source does
+// not exist, so the run fails with a config error before rclone is needed.
 func TestRunThroughRealWiring(t *testing.T) {
+	dav := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusMultiStatus)
+	}))
+	defer dav.Close()
 	a := start(t, testCfg(t))
 	jar, _ := cookiejar.New(nil)
 	c := &client{t: t, base: "http://" + a.Addr(), c: &http.Client{Jar: jar}}
 	c.csrf = c.call("POST", "/api/v1/setup", map[string]any{"password": "correct horse battery", "node_name": "nas-1", "unlock_mode": "keyfile"}, 201)["csrf_token"].(string)
 
-	conn := c.call("POST", "/api/v1/connections", map[string]any{"type": "webdav", "name": "dav", "url": "https://dav.example/dav", "username": "me", "password": "secret-token"}, 201)
+	conn := c.call("POST", "/api/v1/connections", map[string]any{"type": "webdav", "name": "dav", "url": dav.URL + "/dav", "username": "me"}, 201)
 	task := c.call("POST", "/api/v1/tasks", map[string]any{"type": "sync", "name": "photos", "enabled": true, "sync": map[string]any{
 		"protocol": "webdav", "connection_id": conn["id"], "direction": "push", "pairs": []map[string]any{{"local": "/mnt/a", "remote": "a"}}}}, 201)
 
@@ -137,7 +143,8 @@ func TestRunThroughRealWiring(t *testing.T) {
 			}
 		}
 	}
-	if final["status"] != "failed" || final["error_kind"] != "config" || final["seq"] != float64(1) {
+	if final["status"] != "failed" || final["error_kind"] != "config" || final["seq"] != float64(1) ||
+		!strings.Contains(final["error_summary"].(string), "local source missing: /mnt/a") {
 		t.Errorf("run = %v", final)
 	}
 	got := c.call("GET", "/api/v1/runs/"+runID, nil, 200)

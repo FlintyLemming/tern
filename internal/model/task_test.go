@@ -261,3 +261,49 @@ func TestTaskValidateExcludes(t *testing.T) {
 		t.Errorf("backup fields = %v", f)
 	}
 }
+
+func TestValidateOverlappingPairs(t *testing.T) {
+	for _, c := range []struct {
+		pairs []FolderPair
+		field string // "" = valid
+	}{
+		{[]FolderPair{{"/s/a", "/r/a"}, {"/s/a/sub", "/r/b"}}, "sync.pairs[1].local"},
+		{[]FolderPair{{"/s/a", "/r/x"}, {"/s/b", "/r/x/y"}}, "sync.pairs[1].remote"},
+		{[]FolderPair{{"/s/a", "/r/a"}, {"/s/ab", "/r/ab"}}, ""},
+		{[]FolderPair{{"/s/a/sub", "/r/a"}, {"/s/a", "/r/b"}}, "sync.pairs[1].local"},
+		{[]FolderPair{{"/s/a", "/r/a"}, {"/s/a", "/r/b"}}, "sync.pairs[1].local"},
+		{[]FolderPair{{"/s/a", "backup/x/"}, {"/s/b", "backup/x"}}, "sync.pairs[1].remote"},
+		{[]FolderPair{{"/", "/r/a"}, {"/s", "/r/b"}}, "sync.pairs[1].local"},
+		{[]FolderPair{{"/s/a", "x"}, {"/s/b", "/x"}}, ""},
+		{[]FolderPair{{"/s/a", "/r/a"}, {"/s/b", "/r/b"}, {"/s/c", "/r/a/deep"}}, "sync.pairs[2].remote"},
+		{[]FolderPair{{"/x/y", "/r/a"}, {"/x", "/r/b"}, {"/x/z", "/r/c"}}, "sync.pairs[1].local,sync.pairs[2].local"},
+	} {
+		task := syncTask()
+		task.Sync.Pairs = c.pairs
+		f := task.Validate()
+		if c.field == "" {
+			if len(f) != 0 {
+				t.Errorf("%v: Validate = %v, want valid", c.pairs, f)
+			}
+			continue
+		}
+		fields := strings.Split(c.field, ",")
+		for _, field := range fields {
+			if f[field] != "overlaps" {
+				t.Errorf("%v: Validate = %v, want %s: overlaps", c.pairs, f, field)
+			}
+		}
+		if len(f) != len(fields) {
+			t.Errorf("%v: Validate = %v, want only %v", c.pairs, f, fields)
+		}
+	}
+}
+
+// An invalid path reports its own error, not overlaps with later pairs.
+func TestValidateOverlapSkipsInvalidPaths(t *testing.T) {
+	task := syncTask()
+	task.Sync.Pairs = []FolderPair{{"/s/a", ""}, {"/s/b", "x"}}
+	if f := task.Validate(); !reflect.DeepEqual(f, map[string]string{"sync.pairs[0].remote": "required"}) {
+		t.Errorf("Validate = %v", f)
+	}
+}

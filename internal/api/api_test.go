@@ -72,6 +72,9 @@ type harness struct {
 	check func(connID string) error
 	// notMounted makes every path look like it is off the mounted volumes.
 	notMounted bool
+	// reg is the engine registry of the runner and the API; a test can
+	// register a real builder over it.
+	reg *engine.Registry
 }
 
 // harnessAccess is the real access.Opener with a replaceable preflight.
@@ -166,6 +169,7 @@ func (h *harness) restart() {
 	}
 	reg.Register(model.TaskSync, build)
 	reg.Register(model.TaskBackup, build)
+	h.reg = reg
 	h.runner = &runner.Runner{
 		Store: h.st, Registry: reg, Events: h.hub, Clock: h.clk, DataDir: h.dataDir, RuntimeDir: h.runtimeDir,
 		Hooks: hooks.Runner{Access: access.Opener{Store: h.st, Vault: h.vault}, RuntimeDir: h.runtimeDir},

@@ -19,6 +19,7 @@ import (
 	"tern/internal/config"
 	"tern/internal/engine"
 	"tern/internal/engine/restic"
+	"tern/internal/engine/syncengine"
 	"tern/internal/events"
 	"tern/internal/hooks"
 	"tern/internal/model"
@@ -75,18 +76,20 @@ func prepareRuntimeDir(dir string) error {
 	return nil
 }
 
-// newRegistry registers the engines. A task type without one (sync, until
-// its engines exist) fails its runs with a config error.
+// newRegistry registers the engines: restic for backup tasks, rclone and
+// rsync (by protocol) for sync tasks.
 func newRegistry(cfg config.Config, st *store.Store, v *vault.Vault) *engine.Registry {
+	opener := access.Opener{Store: st, Vault: v}
 	registry := engine.NewRegistry()
 	registry.Register(model.TaskBackup, restic.NewBuilder(restic.Deps{
-		Access:  access.Opener{Store: st, Vault: v},
+		Access:  opener,
 		Store:   st,
 		Vault:   v,
 		DataDir: cfg.DataDir,
 
 		SecretsDir: cfg.SecretsDir,
 	}))
+	registry.Register(model.TaskSync, syncengine.NewBuilder(syncengine.Deps{Access: opener, Store: st}))
 	return registry
 }
 
