@@ -97,3 +97,18 @@ export function formatTime(iso: string, timeZone: string, locale: string): strin
 export function zoneLabel(timeZone: string): string {
   return zoneOrUTC(timeZone)
 }
+
+// formatRelative says how long ago an instant was: "3 分钟前" / "3 min ago".
+export function formatRelative(iso: string, now: number, lang: Lang = 'zh'): string {
+  const sec = Math.max(0, Math.round((now - Date.parse(iso)) / 1000))
+  if (sec < 60) return lang === 'zh' ? '刚刚' : 'just now'
+  const steps: [number, string, string][] = [
+    [86400, ' 天前', ' d ago'],
+    [3600, ' 小时前', ' h ago'],
+    [60, ' 分钟前', ' min ago'],
+  ]
+  for (const [size, zh, en] of steps) {
+    if (sec >= size) return `${Math.floor(sec / size)}${lang === 'zh' ? zh : en}`
+  }
+  return ''
+}

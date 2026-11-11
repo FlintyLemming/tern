@@ -356,5 +356,73 @@
     "cmd_title": "等价命令行",
     "cmd_desc": "不用 tern 时照着执行，效果相同。凭据不在这里，要自己提供。",
     "repo_password_source": "仓库密码从哪来"
+  },
+  "overview": {
+    "title": "概览",
+    "stale": "{{count}} 个任务超过预期时间没有成功",
+    "last_success_at": "上次成功：{{when}}",
+    "check_failed": "仓库校验失败：{{name}}",
+    "check_failed_link": "查看运行记录",
+    "col_last_success": "上次成功",
+    "col_next": "下次运行",
+    "empty": "还没有任务。先在“连接与密钥”里添加连接，再到“任务”里新建。",
+    "progress": "已传 {{done}} / {{total}} · {{speed}} · 预计剩余 {{eta}}",
+    "waiting_retry": "等待重试",
+    "queued": "排队中",
+    "starting": "正在开始…"
+  },
+  "bbr": {
+    "title": "BBR",
+    "active": "BBR 已生效",
+    "supported": "内核支持 BBR，但当前算法是 {{current}}。在 compose 文件的 sysctls 里加上下面这行，然后重建容器",
+    "missing": "宿主机内核没有加载 tcp_bbr 模块。在宿主机执行下面的命令后重建容器",
+    "note": "BBR 只对本机发出的数据起作用，也就是推送和备份。拉取要看对端自己的设置。"
+  },
+  "run": {
+    "title": "运行记录",
+    "filter_task": "任务",
+    "all_tasks": "全部任务",
+    "col_status": "状态",
+    "col_task": "任务",
+    "col_kind": "种类",
+    "col_trigger": "触发方式",
+    "col_started": "开始时间",
+    "col_duration": "耗时",
+    "col_bytes": "传输量",
+    "col_files": "文件数",
+    "empty": "还没有运行记录。",
+    "load_more": "加载更多",
+    "kind": {
+      "backup": "备份",
+      "sync": "同步",
+      "dry_run": "试运行",
+      "restore": "恢复",
+      "prune": "清理",
+      "check": "校验"
+    },
+    "trigger": {
+      "schedule": "计划",
+      "manual": "手动",
+      "catch_up": "补跑"
+    },
+    "detail": "运行详情",
+    "started": "开始",
+    "finished": "结束",
+    "attempts": "尝试次数",
+    "not_found": "找不到这次运行，可能已按保留策略清理。",
+    "units": "单元",
+    "unit_name": "名称",
+    "unit_error": "错误",
+    "cancel": "取消运行",
+    "cancel_sent": "已请求取消",
+    "allow_once": "本次允许并重跑",
+    "allow_title": "本次允许删除？",
+    "allow_body": "tern 为了保护数据中止了这次同步，原因如下。确认后会重跑一次，这一次不受删除上限限制；以后的运行照旧受限。",
+    "allow_confirm": "允许并重跑",
+    "log": "日志",
+    "log_folded": "前面的日志已折叠",
+    "log_download": "下载完整日志",
+    "log_empty": "还没有日志。",
+    "task_link": "打开任务"
   }
 }

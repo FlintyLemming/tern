@@ -356,5 +356,73 @@
     "cmd_title": "Equivalent command line",
     "cmd_desc": "Running these by hand does the same thing. Credentials are not included; supply them yourself.",
     "repo_password_source": "Where the repository password comes from"
+  },
+  "overview": {
+    "title": "Overview",
+    "stale": "{{count}} tasks have gone too long without a success",
+    "last_success_at": "Last success: {{when}}",
+    "check_failed": "Repository check failed: {{name}}",
+    "check_failed_link": "See the runs",
+    "col_last_success": "Last success",
+    "col_next": "Next run",
+    "empty": "No tasks yet. Add a connection under Connections & keys, then create a task under Tasks.",
+    "progress": "{{done}} of {{total}} · {{speed}} · {{eta}} left",
+    "waiting_retry": "Waiting to retry",
+    "queued": "Queued",
+    "starting": "Starting…"
+  },
+  "bbr": {
+    "title": "BBR",
+    "active": "BBR is on",
+    "supported": "The kernel supports BBR, but the current algorithm is {{current}}. Add the line below under sysctls in the compose file, then recreate the container",
+    "missing": "The host kernel has not loaded the tcp_bbr module. Run the command below on the host, then recreate the container",
+    "note": "BBR only helps data this node sends, that is pushes and backups. For pulls it is up to the remote."
+  },
+  "run": {
+    "title": "Runs",
+    "filter_task": "Task",
+    "all_tasks": "All tasks",
+    "col_status": "Status",
+    "col_task": "Task",
+    "col_kind": "Kind",
+    "col_trigger": "Trigger",
+    "col_started": "Started",
+    "col_duration": "Duration",
+    "col_bytes": "Transferred",
+    "col_files": "Files",
+    "empty": "No runs yet.",
+    "load_more": "Load more",
+    "kind": {
+      "backup": "Backup",
+      "sync": "Sync",
+      "dry_run": "Dry run",
+      "restore": "Restore",
+      "prune": "Prune",
+      "check": "Check"
+    },
+    "trigger": {
+      "schedule": "Schedule",
+      "manual": "Manual",
+      "catch_up": "Catch-up"
+    },
+    "detail": "Run",
+    "started": "Started",
+    "finished": "Finished",
+    "attempts": "Attempts",
+    "not_found": "This run does not exist; it may have been cleaned up.",
+    "units": "Units",
+    "unit_name": "Name",
+    "unit_error": "Error",
+    "cancel": "Cancel run",
+    "cancel_sent": "Cancel requested",
+    "allow_once": "Allow once and rerun",
+    "allow_title": "Allow the deletions this once?",
+    "allow_body": "tern stopped this sync to protect your data, for the reason below. Confirming reruns it once without the deletion limit; later runs are limited as before.",
+    "allow_confirm": "Allow and rerun",
+    "log": "Log",
+    "log_folded": "Earlier lines are folded",
+    "log_download": "Download full log",
+    "log_empty": "No log yet.",
+    "task_link": "Open task"
   }
 }

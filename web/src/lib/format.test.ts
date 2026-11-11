@@ -42,3 +42,13 @@ it('formatTime uses the given zone', () => {
 it('formatTime falls back to UTC for a zone the browser does not know', () => {
   expect(formatTime('2026-11-10T19:00:00Z', 'Local', 'en')).toContain('2026-11-10 19:00')
 })
+
+it('formatRelative', async () => {
+  const { formatRelative } = await import('./format')
+  const now = Date.parse('2026-11-11T12:00:00Z')
+  expect(formatRelative('2026-11-11T11:59:40Z', now, 'zh')).toBe('刚刚')
+  expect(formatRelative('2026-11-11T11:57:00Z', now, 'zh')).toBe('3 分钟前')
+  expect(formatRelative('2026-11-11T10:00:00Z', now, 'en')).toBe('2 h ago')
+  expect(formatRelative('2026-11-06T12:00:00Z', now, 'zh')).toBe('5 天前')
+  expect(formatRelative('2026-11-06T12:00:00Z', now, 'en')).toBe('5 d ago')
+})

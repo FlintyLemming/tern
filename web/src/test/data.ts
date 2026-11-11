@@ -138,3 +138,24 @@ export const overview: Overview = {
 }
 
 export const fiveTimes = ['2026-11-11T19:00:00Z', '2026-11-12T19:00:00Z', '2026-11-13T19:00:00Z', '2026-11-14T19:00:00Z', '2026-11-15T19:00:00Z']
+
+import type { Run } from '../api/types'
+
+export const run = (over: Partial<Run> = {}): Run => ({
+  id: 'r1',
+  seq: 1,
+  task_id: 't2',
+  task_name: 'photos',
+  kind: 'sync',
+  trigger: 'manual',
+  status: 'success',
+  started_at: '2026-11-10T19:00:00Z',
+  finished_at: '2026-11-10T19:05:00Z',
+  attempts: 1,
+  bytes: 1048576,
+  files: 10,
+  error_kind: '',
+  error_summary: '',
+  units: [],
+  ...over,
+})

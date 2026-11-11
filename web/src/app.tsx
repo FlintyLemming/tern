@@ -7,6 +7,9 @@ import { ConnectionsPage } from './pages/connections/ConnectionsPage'
 import { LoginPage } from './pages/login/LoginPage'
 import { TaskEditor } from './pages/tasks/TaskEditor'
 import { TasksPage } from './pages/tasks/TasksPage'
+import { OverviewPage } from './pages/overview/OverviewPage'
+import { RunDetailPage } from './pages/runs/RunDetailPage'
+import { RunsPage } from './pages/runs/RunsPage'
 import { SetupPage } from './pages/setup/SetupPage'
 import { UnlockPage } from './pages/unlock/UnlockPage'
 import { AppShell } from './shell/AppShell'
@@ -57,12 +60,12 @@ export function App() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="/unlock" element={<UnlockPage />} />
               <Route element={<AppShell />}>
-                <Route index element={<Todo>overview</Todo>} />
+                <Route index element={<OverviewPage />} />
                 <Route path="/tasks" element={<TasksPage />} />
                 <Route path="/tasks/new" element={<TaskEditor />} />
                 <Route path="/tasks/:id" element={<TaskEditor />} />
-                <Route path="/runs" element={<Todo>runs</Todo>} />
-                <Route path="/runs/:id" element={<Todo>run</Todo>} />
+                <Route path="/runs" element={<RunsPage />} />
+                <Route path="/runs/:id" element={<RunDetailPage />} />
                 <Route path="/connections" element={<ConnectionsPage />} />
                 <Route path="/snapshots" element={<Todo>snapshots</Todo>} />
                 <Route path="/settings" element={<Todo>settings</Todo>} />
