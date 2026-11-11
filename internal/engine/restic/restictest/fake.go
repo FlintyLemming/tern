@@ -108,10 +108,18 @@ func (f *Fake) write(name, content string) {
 	}
 }
 
-// Add appends steps after those already scripted.
+// Add scripts the next calls: steps go after those already scripted, and
+// after the calls already made.
 func (f *Fake) Add(steps ...Step) {
 	f.t.Helper()
-	n := 0
+	raw, err := os.ReadFile(filepath.Join(f.dir, "count"))
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if err != nil {
+		f.t.Fatal(err)
+	}
 	for {
 		if _, err := os.Stat(filepath.Join(f.dir, fmt.Sprintf("step-%d.exit", n))); err != nil {
 			break

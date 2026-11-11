@@ -84,6 +84,8 @@ func newRegistry(cfg config.Config, st *store.Store, v *vault.Vault) *engine.Reg
 		Store:   st,
 		Vault:   v,
 		DataDir: cfg.DataDir,
+
+		SecretsDir: cfg.SecretsDir,
 	}))
 	return registry
 }

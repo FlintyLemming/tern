@@ -253,17 +253,7 @@ func (a *API) handleRunTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "validation", "this kind of run is not available for the task", map[string]string{"kind": "invalid"})
 		return
 	}
-	runID, err := a.d.Scheduler.Enqueue(t.ID, engine.Request{Kind: kind, AllowDeletes: req.AllowDeletesOnce}, model.TriggerManual)
-	switch {
-	case err == nil:
-		writeJSON(w, http.StatusAccepted, map[string]string{"run_id": runID})
-	case errors.Is(err, scheduler.ErrActive):
-		taskActive(w)
-	case errors.Is(err, scheduler.ErrPaused):
-		writeError(w, http.StatusServiceUnavailable, "paused", "runs cannot start right now: the vault is locked or tern is shutting down", nil)
-	default:
-		storeError(w, r, err, "task")
-	}
+	a.enqueue(w, r, t.ID, engine.Request{Kind: kind, AllowDeletes: req.AllowDeletesOnce})
 }
 
 // handleCommandLine shows what tern would run for the task, so the user is

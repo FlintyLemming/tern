@@ -251,3 +251,21 @@ func TestBaseEnv(t *testing.T) {
 		t.Errorf("BaseEnv() has %d entries, want 4", len(env))
 	}
 }
+
+func TestRawStdout(t *testing.T) {
+	// One line far longer than MaxLine, as `restic snapshots --json` prints.
+	long := strings.Repeat("x", 3*MaxLine)
+	var raw bytes.Buffer
+	var lines int
+	c := Cmd{Path: "/bin/cat", Stdin: strings.NewReader(long + "\nsecond\n"), Stdout: &raw, OnStdout: func([]byte) { lines++ }}
+	res, err := Run(context.Background(), c)
+	if err != nil || res.ExitCode != 0 {
+		t.Fatalf("Run = %+v, %v", res, err)
+	}
+	if raw.String() != long+"\nsecond\n" {
+		t.Errorf("raw stdout has %d bytes, want %d unchanged", raw.Len(), len(long)+8)
+	}
+	if lines != 0 {
+		t.Errorf("OnStdout called %d times although Stdout was set", lines)
+	}
+}

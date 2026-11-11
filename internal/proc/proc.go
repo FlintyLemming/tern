@@ -34,6 +34,10 @@ type Cmd struct {
 	// lines longer than MaxLine are cut. The two callbacks run on different
 	// goroutines.
 	OnStdout, OnStderr func(line []byte)
+	// Stdout, when set, receives the child's standard output unchanged
+	// instead of OnStdout getting it in lines. For output that is one
+	// document rather than a log, such as a long JSON array.
+	Stdout io.Writer
 }
 
 type Result struct {
@@ -160,7 +164,16 @@ func Run(ctx context.Context, c Cmd) (Result, error) {
 	var tail []byte
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go func() { defer wg.Done(); pump(stdout, c.OnStdout, nil) }()
+	go func() {
+		defer wg.Done()
+		if c.Stdout != nil {
+			if _, err := io.Copy(c.Stdout, stdout); err != nil {
+				io.Copy(io.Discard, stdout) // keep draining so the child is not blocked
+			}
+			return
+		}
+		pump(stdout, c.OnStdout, nil)
+	}()
 	go func() { defer wg.Done(); pump(stderr, c.OnStderr, &tail) }()
 	wg.Wait()
 	werr := cmd.Wait()

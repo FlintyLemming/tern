@@ -24,6 +24,11 @@ type Deps struct {
 	Vault   *vault.Vault
 	DataDir string
 	Bin     string // default "restic"
+
+	// For restores: tern's own directories are no place to restore into,
+	// and the target has to be on a mounted volume.
+	SecretsDir string
+	Mounted    func(path string) (bool, error) // default mounts.IsMounted
 }
 
 // PasswordAAD binds a sealed repository password to its task.
@@ -56,6 +61,12 @@ func NewBuilder(d Deps) engine.Builder {
 			return &maintEngine{session: s, unit: "prune"}, nil
 		case model.RunCheck:
 			return &maintEngine{session: s, unit: "check"}, nil
+		case model.RunRestore:
+			p, err := ParseRestoreParams(req.Params)
+			if err != nil {
+				return nil, &model.KindError{Kind: model.KindConfig, Msg: err.Error()}
+			}
+			return &restoreEngine{session: s, p: p}, nil
 		}
 		return nil, configErr("a backup task cannot do a %q run", req.Kind)
 	}

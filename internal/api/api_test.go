@@ -70,6 +70,8 @@ type harness struct {
 	// check replaces the connection preflight, which passes when it is
 	// nil: the test SSH servers do not know the generated keys.
 	check func(connID string) error
+	// notMounted makes every path look like it is off the mounted volumes.
+	notMounted bool
 }
 
 // harnessAccess is the real access.Opener with a replaceable preflight.
@@ -185,6 +187,7 @@ func (h *harness) restart() {
 		Cfg:       config.Config{SecretsDir: h.secrets, DataDir: h.dataDir, RuntimeDir: h.runtimeDir},
 		Access:    harnessAccess{h: h, real: access.Opener{Store: h.st, Vault: h.vault}},
 		ResticBin: h.restic.Bin,
+		Mounted:   func(string) (bool, error) { return !h.notMounted, nil },
 		Store:     h.st,
 		Vault:     h.vault,
 		Sessions:  auth.NewSessions(h.st.DB(), now),

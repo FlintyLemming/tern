@@ -12,6 +12,7 @@ import (
 	"tern/internal/config"
 	"tern/internal/engine"
 	"tern/internal/events"
+	"tern/internal/mounts"
 	"tern/internal/runner"
 	"tern/internal/scheduler"
 	"tern/internal/store"
@@ -41,6 +42,9 @@ type Deps struct {
 	// ResticBin to "restic".
 	Access    engine.AccessOpener
 	ResticBin string
+	// Mounted tells whether a path is on a mounted volume; restores only
+	// go to such paths. Defaults to mounts.IsMounted.
+	Mounted func(path string) (bool, error)
 }
 
 // API is the HTTP handler for the whole process.
@@ -86,6 +90,9 @@ func New(d Deps) *API {
 	if d.Access == nil {
 		d.Access = access.Opener{Store: d.Store, Vault: d.Vault}
 	}
+	if d.Mounted == nil {
+		d.Mounted = mounts.IsMounted
+	}
 	a := &API{d: d, mux: http.NewServeMux(), closing: make(chan struct{})}
 
 	a.Handle("GET /api/v1/status", a.handleStatus)
@@ -98,6 +105,7 @@ func New(d Deps) *API {
 	a.registerConnections()
 	a.registerTasks()
 	a.registerBackup()
+	a.registerSnapshots()
 	a.registerRuns()
 	a.registerSettings()
 
