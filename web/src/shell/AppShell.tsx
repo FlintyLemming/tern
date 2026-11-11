@@ -59,7 +59,7 @@ function SidebarFoot() {
   }
   return (
     <div className="mt-auto flex flex-col gap-2 px-4 pt-4 text-caption text-ink-muted">
-      <p>{t('shell.zone', { zone })}</p>
+      {zone ? <p>{t('shell.zone', { zone })}</p> : null}
       <button type="button" onClick={() => void logout()} className="inline-flex items-center gap-2 self-start text-ink-secondary hover:text-ink">
         <LogOut aria-hidden className="size-4" />
         {t('shell.logout')}

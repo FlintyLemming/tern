@@ -3,6 +3,7 @@ import { useEffect, type ReactNode } from 'react'
 import { BrowserRouter, Route, Routes, useNavigate } from 'react-router'
 import { ApiError, configureClient } from './api/client'
 import { forgetSession, qk } from './api/queries'
+import { ConnectionsPage } from './pages/connections/ConnectionsPage'
 import { LoginPage } from './pages/login/LoginPage'
 import { SetupPage } from './pages/setup/SetupPage'
 import { UnlockPage } from './pages/unlock/UnlockPage'
@@ -60,7 +61,7 @@ export function App() {
                 <Route path="/tasks/:id" element={<Todo>task</Todo>} />
                 <Route path="/runs" element={<Todo>runs</Todo>} />
                 <Route path="/runs/:id" element={<Todo>run</Todo>} />
-                <Route path="/connections" element={<Todo>connections</Todo>} />
+                <Route path="/connections" element={<ConnectionsPage />} />
                 <Route path="/snapshots" element={<Todo>snapshots</Todo>} />
                 <Route path="/settings" element={<Todo>settings</Todo>} />
                 <Route path="*" element={<Todo>404</Todo>} />
