@@ -30,15 +30,14 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
             wide ? 'max-w-2xl' : 'max-w-lg',
           )}
         >
-          <div className="mb-4 flex items-start justify-between gap-4">
-            <RD.Title className="text-title">{title}</RD.Title>
-            <RD.Close aria-label={t('common.close')} className="rounded-sm p-1 text-ink-muted hover:bg-canvas-soft">
-              <X aria-hidden className="size-4" />
-            </RD.Close>
-          </div>
+          <RD.Title className="mb-4 pr-8 text-title">{title}</RD.Title>
           {description ? <RD.Description className="mb-4 text-caption text-ink-muted">{description}</RD.Description> : null}
           <div className="flex flex-col gap-4">{children}</div>
           {footer ? <div className="mt-6 flex flex-wrap justify-end gap-2">{footer}</div> : null}
+          {/* last in the DOM so opening the dialog focuses its first field, not this */}
+          <RD.Close aria-label={t('common.close')} className="absolute top-5 right-5 rounded-sm p-1 text-ink-muted hover:bg-canvas-soft">
+            <X aria-hidden className="size-4" />
+          </RD.Close>
         </RD.Content>
       </RD.Portal>
     </RD.Root>

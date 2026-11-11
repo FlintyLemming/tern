@@ -1,6 +1,7 @@
 import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { useEffect, type ReactNode } from 'react'
-import { BrowserRouter, Route, Routes, useNavigate } from 'react-router'
+import { useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
+import { BrowserRouter, Link, Route, Routes, useNavigate } from 'react-router'
 import { ApiError, configureClient } from './api/client'
 import { forgetSession, qk } from './api/queries'
 import { ConnectionsPage } from './pages/connections/ConnectionsPage'
@@ -10,10 +11,13 @@ import { TasksPage } from './pages/tasks/TasksPage'
 import { OverviewPage } from './pages/overview/OverviewPage'
 import { RunDetailPage } from './pages/runs/RunDetailPage'
 import { RunsPage } from './pages/runs/RunsPage'
+import { SettingsPage } from './pages/settings/SettingsPage'
+import { SnapshotsPage } from './pages/snapshots/SnapshotsPage'
 import { SetupPage } from './pages/setup/SetupPage'
 import { UnlockPage } from './pages/unlock/UnlockPage'
 import { AppShell } from './shell/AppShell'
 import { AuthGate } from './shell/AuthGate'
+import { EmptyState } from './ui/EmptyState'
 import { Toaster } from './ui/Toast'
 import './i18n'
 
@@ -43,9 +47,19 @@ function ClientWiring() {
   return null
 }
 
-// Pages are filled in by later tasks.
-function Todo({ children }: { children: ReactNode }) {
-  return <h1 className="text-page">{children}</h1>
+function NotFound() {
+  const { t } = useTranslation()
+  return (
+    <EmptyState
+      action={
+        <Link to="/" className="text-primary underline">
+          {t('common.back_home')}
+        </Link>
+      }
+    >
+      {t('common.not_found_page')}
+    </EmptyState>
+  )
 }
 
 export function App() {
@@ -67,9 +81,9 @@ export function App() {
                 <Route path="/runs" element={<RunsPage />} />
                 <Route path="/runs/:id" element={<RunDetailPage />} />
                 <Route path="/connections" element={<ConnectionsPage />} />
-                <Route path="/snapshots" element={<Todo>snapshots</Todo>} />
-                <Route path="/settings" element={<Todo>settings</Todo>} />
-                <Route path="*" element={<Todo>404</Todo>} />
+                <Route path="/snapshots" element={<SnapshotsPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="*" element={<NotFound />} />
               </Route>
             </Route>
           </Routes>

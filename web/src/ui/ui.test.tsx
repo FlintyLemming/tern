@@ -138,3 +138,13 @@ it('CodeBlock is monospace, scrolls sideways and can copy', () => {
   expect(pre.className).toContain('overflow-x-auto')
   expect(screen.getByRole('button')).toBeInTheDocument()
 })
+
+it('Dialog focuses its first field, not the close button', async () => {
+  const { Dialog } = await import('./Dialog')
+  render(
+    <Dialog open onOpenChange={() => {}} title="t">
+      <Input aria-label="first" />
+    </Dialog>,
+  )
+  await vi.waitFor(() => expect(screen.getByLabelText('first')).toHaveFocus())
+})

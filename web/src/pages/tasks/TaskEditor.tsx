@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { ApiError } from '../../api/client'
 import { errorText } from '../../api/errors'
 import { generateRepoPassword, useConnections, useDeleteTask, useSaveTask, useTask } from '../../api/queries'
-import type { Task, TaskType } from '../../api/types'
+import type { TaskType } from '../../api/types'
 import { recoveryRepository } from '../../lib/recovery'
 import { Banner } from '../../ui/Banner'
 import { Button } from '../../ui/Button'
@@ -15,6 +15,7 @@ import { Input } from '../../ui/Input'
 import { PageHeader } from '../../ui/PageHeader'
 import { Switch } from '../../ui/Switch'
 import { useToast } from '../../ui/Toast'
+import { RecoveryInfoDialog } from '../snapshots/RecoveryInfoDialog'
 import { BackupFields, type RepoPasswordMode } from './BackupFields'
 import { draftOf, ErrorsProvider, hasNaN, newDraft, useFieldError, type Draft } from './form'
 import { HookFields } from './HookFields'
@@ -22,19 +23,15 @@ import { RecoveryDialog } from './RecoveryDialog'
 import { ScheduleField } from './ScheduleField'
 import { SyncFields } from './SyncFields'
 
-export interface EditorExtrasProps {
-  task: Task
-}
-
 // TaskEditor is the page for /tasks/new?type=… and /tasks/:id. Another task
 // (or type) is another form: nothing typed for one carries over to the next.
-export function TaskEditor({ extras }: { extras?: (p: EditorExtrasProps) => ReactNode }) {
+export function TaskEditor() {
   const { id } = useParams()
   const [params] = useSearchParams()
-  return <TaskEditorFor key={id ?? `new-${params.get('type')}`} extras={extras} />
+  return <TaskEditorFor key={id ?? `new-${params.get('type')}`} />
 }
 
-function TaskEditorFor({ extras }: { extras?: (p: EditorExtrasProps) => ReactNode }) {
+function TaskEditorFor() {
   const { id } = useParams()
   const [params] = useSearchParams()
   const { t } = useTranslation()
@@ -66,19 +63,17 @@ function TaskEditorFor({ extras }: { extras?: (p: EditorExtrasProps) => ReactNod
     }
   }
 
-  return <EditorForm key={formKey} draft={draft} setDraft={setDraft} onReload={reload} extras={task.data && extras ? extras({ task: task.data }) : null} />
+  return <EditorForm key={formKey} draft={draft} setDraft={setDraft} onReload={reload} />
 }
 
 function EditorForm({
   draft: d,
   setDraft,
   onReload,
-  extras,
 }: {
   draft: Draft
   setDraft: (f: (d: Draft | null) => Draft | null) => void
   onReload: () => Promise<void>
-  extras: ReactNode
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -96,6 +91,7 @@ function EditorForm({
   const [scheduleInvalid, setScheduleInvalid] = useState(false)
   const [recoveryOpen, setRecoveryOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [showRecovery, setShowRecovery] = useState(false)
 
   // repository password: only while creating a backup task
   const [pwMode, setPwMode] = useState<RepoPasswordMode>('generate')
@@ -250,7 +246,12 @@ function EditorForm({
                   : undefined
               }
             />
-            {extras}
+            {!creating && d.id ? (
+              <div className="mt-6 border-t border-hairline pt-4">
+                <Button onClick={() => setShowRecovery(true)}>{t('rec.open')}</Button>
+                <RecoveryInfoDialog taskId={d.id} taskName={d.name} open={showRecovery} onOpenChange={setShowRecovery} />
+              </div>
+            ) : null}
           </Card>
         ) : null}
         {type === 'sync' && d.sync ? (
