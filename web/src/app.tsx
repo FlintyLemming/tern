@@ -3,6 +3,9 @@ import { useEffect, type ReactNode } from 'react'
 import { BrowserRouter, Route, Routes, useNavigate } from 'react-router'
 import { ApiError, configureClient } from './api/client'
 import { forgetSession, qk } from './api/queries'
+import { LoginPage } from './pages/login/LoginPage'
+import { SetupPage } from './pages/setup/SetupPage'
+import { UnlockPage } from './pages/unlock/UnlockPage'
 import { AppShell } from './shell/AppShell'
 import { AuthGate } from './shell/AuthGate'
 import { Toaster } from './ui/Toast'
@@ -47,9 +50,9 @@ export function App() {
           <ClientWiring />
           <Routes>
             <Route element={<AuthGate />}>
-              <Route path="/setup" element={<Todo>setup</Todo>} />
-              <Route path="/login" element={<Todo>login</Todo>} />
-              <Route path="/unlock" element={<Todo>unlock</Todo>} />
+              <Route path="/setup" element={<SetupPage />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/unlock" element={<UnlockPage />} />
               <Route element={<AppShell />}>
                 <Route index element={<Todo>overview</Todo>} />
                 <Route path="/tasks" element={<Todo>tasks</Todo>} />

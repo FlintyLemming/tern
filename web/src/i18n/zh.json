@@ -112,5 +112,49 @@
     "body_mismatch": "secrets 目录里的密钥文件不是当初生成的那一个，打不开这里的保险箱，计划任务也不会运行。",
     "fix": "把原来的 secrets 目录挂回容器，然后重启容器。",
     "note": "这个页面上没有可以操作的东西：问题只能在宿主机上解决。"
+  },
+  "v": {
+    "required": "必填",
+    "too_short": "至少 10 个字符",
+    "mismatch": "两次输入不一致",
+    "node_name": "只能用小写字母、数字和连字符，以字母或数字开头"
+  },
+  "setup": {
+    "title": "初始化 tern",
+    "step": "第 {{n}} 步，共 3 步",
+    "step1": "管理员与节点",
+    "step2": "解锁方式",
+    "step3": "确认",
+    "password": "管理员密码",
+    "password_hint": "至少 10 个字符。登录这个界面用。",
+    "password_again": "再输一遍",
+    "node_name": "节点名",
+    "node_name_hint": "小写字母、数字、连字符，比如 nas-home",
+    "mode_keyfile": "密钥文件（默认）",
+    "mode_keyfile_desc": "重启后自动解锁，计划任务照常运行。secrets 目录要和 data 分开保管。",
+    "mode_passphrase": "口令",
+    "mode_passphrase_desc": "更安全，但每次重启后要在界面输入口令，解锁前计划任务不会运行。",
+    "passphrase": "口令",
+    "passphrase_again": "再输一遍口令",
+    "next": "下一步",
+    "back": "上一步",
+    "submit": "完成初始化",
+    "summary_node": "节点名",
+    "summary_mode": "解锁方式",
+    "summary_note": "管理员密码和口令不会显示在这里，请自己记好。"
+  },
+  "login": {
+    "title": "登录",
+    "password": "管理员密码",
+    "submit": "登录",
+    "wrong": "密码不对",
+    "wait": "尝试次数太多，{{n}} 秒后再试"
+  },
+  "unlock": {
+    "title": "解锁保险箱",
+    "desc": "tern 重启过，要输入口令才能打开保存的凭据。解锁前计划任务不会运行。",
+    "passphrase": "口令",
+    "submit": "解锁",
+    "wrong": "口令不对"
   }
 }

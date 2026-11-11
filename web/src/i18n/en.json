@@ -112,5 +112,49 @@
     "body_mismatch": "The key file in the secrets directory is not the one this vault was created with, so the vault stays closed and no scheduled task runs.",
     "fix": "Mount the original secrets directory back into the container, then restart the container.",
     "note": "There is nothing to do on this page: it can only be fixed on the host."
+  },
+  "v": {
+    "required": "Required",
+    "too_short": "At least 10 characters",
+    "mismatch": "The two entries differ",
+    "node_name": "Only lowercase letters, digits and hyphens, starting with a letter or digit"
+  },
+  "setup": {
+    "title": "Set up tern",
+    "step": "Step {{n}} of 3",
+    "step1": "Administrator and node",
+    "step2": "Unlock mode",
+    "step3": "Confirm",
+    "password": "Admin password",
+    "password_hint": "At least 10 characters. Used to log in here.",
+    "password_again": "Enter it again",
+    "node_name": "Node name",
+    "node_name_hint": "Lowercase letters, digits and hyphens, e.g. nas-home",
+    "mode_keyfile": "Key file (default)",
+    "mode_keyfile_desc": "Unlocks by itself after a restart, so scheduled tasks keep running. Keep the secrets directory apart from data.",
+    "mode_passphrase": "Passphrase",
+    "mode_passphrase_desc": "Safer, but after every restart someone must enter the passphrase here; until then no scheduled task runs.",
+    "passphrase": "Passphrase",
+    "passphrase_again": "Enter the passphrase again",
+    "next": "Next",
+    "back": "Back",
+    "submit": "Finish setup",
+    "summary_node": "Node name",
+    "summary_mode": "Unlock mode",
+    "summary_note": "The admin password and passphrase are not shown here; make sure you keep them."
+  },
+  "login": {
+    "title": "Log in",
+    "password": "Admin password",
+    "submit": "Log in",
+    "wrong": "Wrong password",
+    "wait": "Too many attempts. Try again in {{n}} s"
+  },
+  "unlock": {
+    "title": "Unlock the vault",
+    "desc": "tern has restarted and needs the passphrase to open its stored credentials. No scheduled task runs until then.",
+    "passphrase": "Passphrase",
+    "submit": "Unlock",
+    "wrong": "Wrong passphrase"
   }
 }
