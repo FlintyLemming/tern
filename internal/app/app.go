@@ -18,8 +18,10 @@ import (
 	"tern/internal/clock"
 	"tern/internal/config"
 	"tern/internal/engine"
+	"tern/internal/engine/restic"
 	"tern/internal/events"
 	"tern/internal/hooks"
+	"tern/internal/model"
 	"tern/internal/rundir"
 	"tern/internal/runner"
 	"tern/internal/scheduler"
@@ -73,6 +75,19 @@ func prepareRuntimeDir(dir string) error {
 	return nil
 }
 
+// newRegistry registers the engines. A task type without one (sync, until
+// its engines exist) fails its runs with a config error.
+func newRegistry(cfg config.Config, st *store.Store, v *vault.Vault) *engine.Registry {
+	registry := engine.NewRegistry()
+	registry.Register(model.TaskBackup, restic.NewBuilder(restic.Deps{
+		Access:  access.Opener{Store: st, Vault: v},
+		Store:   st,
+		Vault:   v,
+		DataDir: cfg.DataDir,
+	}))
+	return registry
+}
+
 func startWithStore(ctx context.Context, cfg config.Config, version string, st *store.Store) (*App, error) {
 	if err := prepareRuntimeDir(cfg.RuntimeDir); err != nil {
 		return nil, err
@@ -92,10 +107,9 @@ func startWithStore(ctx context.Context, cfg config.Config, version string, st *
 		tlsCfg = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
 	}
 
-	// The execution core. Engines register themselves with the registry;
-	// until one does, runs of that task type fail with a config error.
+	// The execution core.
 	hub := events.NewHub()
-	registry := engine.NewRegistry()
+	registry := newRegistry(cfg, st, v)
 	run := &runner.Runner{
 		Store:      st,
 		Registry:   registry,
