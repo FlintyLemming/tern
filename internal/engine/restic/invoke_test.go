@@ -2,6 +2,7 @@ package restic
 
 import (
 	"context"
+	"encoding/csv"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -22,7 +23,10 @@ func testInvocation(t *testing.T) Invocation {
 func TestCmdGlobals(t *testing.T) {
 	iv := testInvocation(t)
 	c := iv.Cmd("snapshots")
-	want := []string{"-r", "sftp:tern-target:/srv/repo", "-o", `sftp.command=ssh -F "` + iv.Dir.Path + `/ssh_config" tern-target -s sftp`,
+	// restic reads -o values as CSV records, so the option is one quoted
+	// field with its own quotes doubled. What restic ends up with is
+	// sftp.command=ssh -F "<dir>/ssh_config" tern-target -s sftp
+	want := []string{"-r", "sftp:tern-target:/srv/repo", "-o", `"sftp.command=ssh -F ""` + iv.Dir.Path + `/ssh_config"" tern-target -s sftp"`,
 		"-o", "sftp.connections=5", "snapshots"}
 	if !reflect.DeepEqual(c.Args, want) {
 		t.Errorf("Args = %q\nwant   %q", c.Args, want)
@@ -33,6 +37,15 @@ func TestCmdGlobals(t *testing.T) {
 	iv.Bin = "/opt/restic"
 	if got := iv.Cmd("check", "--json"); got.Path != "/opt/restic" || !reflect.DeepEqual(got.Args[len(got.Args)-2:], []string{"check", "--json"}) {
 		t.Errorf("Cmd = %+v", got)
+	}
+}
+
+func TestCmdOptionSurvivesCSV(t *testing.T) {
+	iv := testInvocation(t)
+	iv.SSHConfig = "/run/a,b/ssh_config" // a comma would split an unquoted value in two
+	rec, err := csv.NewReader(strings.NewReader(iv.Cmd("snapshots").Args[3])).Read()
+	if err != nil || len(rec) != 1 || rec[0] != `sftp.command=ssh -F "/run/a,b/ssh_config" tern-target -s sftp` {
+		t.Errorf("restic would read the option as %q, %v", rec, err)
 	}
 }
 

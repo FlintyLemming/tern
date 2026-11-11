@@ -5,6 +5,7 @@ package restic
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"tern/internal/proc"
 	"tern/internal/rundir"
@@ -33,7 +34,7 @@ func (iv Invocation) Cmd(args ...string) proc.Cmd {
 	}
 	global := []string{
 		"-r", "sftp:" + sshx.Alias + ":" + iv.RepoPath,
-		"-o", fmt.Sprintf(`sftp.command=ssh -F "%s" %s -s sftp`, iv.SSHConfig, sshx.Alias),
+		"-o", csvField(fmt.Sprintf(`sftp.command=ssh -F "%s" %s -s sftp`, iv.SSHConfig, sshx.Alias)),
 		"-o", fmt.Sprintf("sftp.connections=%d", iv.Connections),
 	}
 	return proc.Cmd{
@@ -47,6 +48,12 @@ func (iv Invocation) Cmd(args ...string) proc.Cmd {
 			"RESTIC_PROGRESS_FPS=1",
 		},
 	}
+}
+
+// csvField quotes v for restic's -o flag, which is parsed as a CSV record:
+// unquoted, a quote in the value is a syntax error and a comma splits it.
+func csvField(v string) string {
+	return `"` + strings.ReplaceAll(v, `"`, `""`) + `"`
 }
 
 // WritePassword puts the repository password where Cmd points restic to,
