@@ -86,6 +86,7 @@ func (a *API) handleUnlock(w http.ResponseWriter, r *http.Request) {
 	err := a.d.Vault.Unlock(r.Context(), req.Passphrase)
 	switch {
 	case err == nil:
+		a.syncPaused() // scheduling resumes
 		w.WriteHeader(http.StatusNoContent)
 	case errors.Is(err, vault.ErrWrongPassphrase):
 		writeError(w, http.StatusForbidden, "forbidden", "wrong passphrase", nil)

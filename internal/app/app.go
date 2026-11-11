@@ -12,20 +12,28 @@ import (
 	"os"
 	"time"
 
+	"tern/internal/access"
 	"tern/internal/api"
 	"tern/internal/auth"
+	"tern/internal/clock"
 	"tern/internal/config"
+	"tern/internal/engine"
+	"tern/internal/events"
+	"tern/internal/hooks"
 	"tern/internal/rundir"
+	"tern/internal/runner"
+	"tern/internal/scheduler"
 	"tern/internal/store"
 	"tern/internal/vault"
 )
 
 // App is a running tern node.
 type App struct {
-	st  *store.Store
-	api *api.API
-	srv *http.Server
-	ln  net.Listener
+	st    *store.Store
+	api   *api.API
+	sched *scheduler.Scheduler
+	srv   *http.Server
+	ln    net.Listener
 }
 
 // Start opens the data directory, loads the vault and begins serving.
@@ -84,28 +92,58 @@ func startWithStore(ctx context.Context, cfg config.Config, version string, st *
 		tlsCfg = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
 	}
 
+	// The execution core. Engines register themselves with the registry;
+	// until one does, runs of that task type fail with a config error.
+	hub := events.NewHub()
+	registry := engine.NewRegistry()
+	run := &runner.Runner{
+		Store:      st,
+		Registry:   registry,
+		Hooks:      hooks.Runner{Access: access.Opener{Store: st, Vault: v}, RuntimeDir: cfg.RuntimeDir},
+		Events:     hub,
+		Clock:      clock.Real,
+		DataDir:    cfg.DataDir,
+		RuntimeDir: cfg.RuntimeDir,
+	}
+	sched := scheduler.New(scheduler.Deps{Store: st, Runner: run, Clock: clock.Real, Events: hub})
+	// No run can get at its credentials before the vault is open; the API
+	// resumes scheduling once setup or unlock has happened.
+	sched.SetPaused(state != vault.StateUnlocked)
+
 	h := api.New(api.Deps{
-		Cfg:      cfg,
-		Store:    st,
-		Vault:    v,
-		Sessions: auth.NewSessions(st.DB(), time.Now),
-		Limiter:  auth.NewLimiter(),
-		Version:  version,
-		Now:      time.Now,
+		Cfg:       cfg,
+		Store:     st,
+		Vault:     v,
+		Sessions:  auth.NewSessions(st.DB(), time.Now),
+		Limiter:   auth.NewLimiter(),
+		Version:   version,
+		Now:       time.Now,
+		Clock:     clock.Real,
+		Scheduler: sched,
+		Runner:    run,
+		Registry:  registry,
+		Events:    hub,
 	})
 
 	ln, err := net.Listen("tcp", cfg.Listen)
 	if err != nil {
 		return nil, fmt.Errorf("listen on %s: %w", cfg.Listen, err)
 	}
+	// Last thing that can fail, and the first that has side effects on run
+	// records: leftovers of the previous process become "interrupted".
+	if err := sched.Start(ctx); err != nil {
+		ln.Close()
+		return nil, fmt.Errorf("start scheduler: %w", err)
+	}
 	if tlsCfg != nil {
 		ln = tls.NewListener(ln, tlsCfg)
 	}
 	a := &App{
-		st:  st,
-		api: h,
-		ln:  ln,
-		srv: &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second},
+		st:    st,
+		api:   h,
+		sched: sched,
+		ln:    ln,
+		srv:   &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second},
 	}
 	go func() {
 		if err := a.srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -122,12 +160,16 @@ func (a *App) Addr() string { return a.ln.Addr().String() }
 // API is where later components register their routes.
 func (a *App) API() *api.API { return a.api }
 
-// Shutdown stops accepting requests, waits for in-flight ones until ctx
-// expires, then closes the database and releases the data directory.
+// Shutdown stops accepting requests and waits for in-flight ones, then
+// interrupts every run and waits for it to wind down (children terminated,
+// post-task commands run, records written), all until ctx expires. Last it
+// closes the database and releases the data directory.
 func (a *App) Shutdown(ctx context.Context) error {
+	a.api.Close() // event streams would otherwise never go idle
 	err := a.srv.Shutdown(ctx)
 	if err != nil {
 		a.srv.Close()
 	}
+	a.sched.Shutdown(ctx)
 	return errors.Join(err, a.st.Close())
 }

@@ -14,11 +14,23 @@ import (
 	"testing"
 	"time"
 
+	"tern/internal/access"
 	"tern/internal/auth"
+	"tern/internal/clock"
 	"tern/internal/config"
+	"tern/internal/engine"
+	"tern/internal/engine/fake"
+	"tern/internal/events"
+	"tern/internal/hooks"
+	"tern/internal/model"
+	"tern/internal/runner"
+	"tern/internal/scheduler"
 	"tern/internal/store"
 	"tern/internal/vault"
 )
+
+// Cron expressions are read in time.Local; pin it for the schedule tests.
+func init() { time.Local = time.UTC }
 
 const (
 	adminPass = "correct horse battery"
@@ -36,6 +48,45 @@ type harness struct {
 
 	cookie string // sent on every request when non-empty
 	csrf   string // sent on every non-GET request when non-empty
+
+	// Execution core, rebuilt by restart like the rest of the process.
+	dataDir, runtimeDir string
+	clk                 *clock.Fake // starts at now; move both with advance
+	hub                 *events.Hub
+	rec                 *recorder
+	runner              *runner.Runner
+	sched               *scheduler.Scheduler
+	stopCore            func()
+
+	enginesMu sync.Mutex
+	engines   map[string]*fake.Engine // by task name
+}
+
+// engine returns the fake engine runs of the task called name are built
+// from; by default one that succeeds at once.
+func (h *harness) engine(name string) *fake.Engine {
+	h.enginesMu.Lock()
+	defer h.enginesMu.Unlock()
+	if h.engines[name] == nil {
+		h.engines[name] = &fake.Engine{DescribeLines: []string{"fake-tool --for " + name}}
+	}
+	return h.engines[name]
+}
+
+// blocked makes runs of the task called name hang until Block is closed.
+func (h *harness) blocked(name string) *fake.Engine {
+	e := &fake.Engine{Block: make(chan struct{})}
+	h.enginesMu.Lock()
+	h.engines[name] = e
+	h.enginesMu.Unlock()
+	return e
+}
+
+// advance moves time forward and lets the scheduler act on it.
+func (h *harness) advance(d time.Duration) {
+	h.now = h.now.Add(d)
+	h.clk.Advance(d)
+	h.sched.Sync()
 }
 
 func newHarness(t *testing.T) *harness {
@@ -45,7 +96,9 @@ func newHarness(t *testing.T) *harness {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	h := &harness{t: t, st: st, secrets: t.TempDir(), now: time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)}
+	h := &harness{t: t, st: st, secrets: t.TempDir(), now: time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC),
+		dataDir: t.TempDir(), runtimeDir: t.TempDir(), engines: map[string]*fake.Engine{}}
+	t.Cleanup(func() { h.stopCore() }) // before the store closes
 	h.restart()
 	return h
 }
@@ -58,14 +111,50 @@ func (h *harness) restart() {
 		h.t.Fatal(err)
 	}
 	now := func() time.Time { return h.now }
+
+	if h.stopCore != nil {
+		h.stopCore()
+	}
+	h.clk = clock.NewFake(h.now)
+	h.hub = events.NewHub()
+	recCtx, recCancel := context.WithCancel(context.Background())
+	h.rec = newRecorder(recCtx, h.hub)
+	reg := engine.NewRegistry()
+	build := func(t model.Task, req engine.Request) (engine.Engine, error) {
+		return fake.Builder(h.engine(t.Name))(t, req)
+	}
+	reg.Register(model.TaskSync, build)
+	reg.Register(model.TaskBackup, build)
+	h.runner = &runner.Runner{
+		Store: h.st, Registry: reg, Events: h.hub, Clock: h.clk, DataDir: h.dataDir, RuntimeDir: h.runtimeDir,
+		Hooks: hooks.Runner{Access: access.Opener{Store: h.st, Vault: h.vault}, RuntimeDir: h.runtimeDir},
+	}
+	sched := scheduler.New(scheduler.Deps{Store: h.st, Runner: h.runner, Clock: h.clk, Events: h.hub})
+	sched.SetPaused(h.vault.State() != vault.StateUnlocked)
+	if err := sched.Start(context.Background()); err != nil {
+		h.t.Fatal(err)
+	}
+	h.sched = sched
+	h.stopCore = func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		sched.Shutdown(ctx)
+		recCancel()
+	}
+
 	h.api = New(Deps{
-		Cfg:      config.Config{SecretsDir: h.secrets},
-		Store:    h.st,
-		Vault:    h.vault,
-		Sessions: auth.NewSessions(h.st.DB(), now),
-		Limiter:  auth.NewLimiter(),
-		Version:  "test",
-		Now:      now,
+		Cfg:       config.Config{SecretsDir: h.secrets, DataDir: h.dataDir},
+		Store:     h.st,
+		Vault:     h.vault,
+		Sessions:  auth.NewSessions(h.st.DB(), now),
+		Limiter:   auth.NewLimiter(),
+		Version:   "test",
+		Now:       now,
+		Clock:     h.clk,
+		Scheduler: sched,
+		Runner:    h.runner,
+		Registry:  reg,
+		Events:    h.hub,
 	})
 	h.cookie, h.csrf = "", ""
 }

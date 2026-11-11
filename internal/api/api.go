@@ -7,7 +7,12 @@ import (
 	"time"
 
 	"tern/internal/auth"
+	"tern/internal/clock"
 	"tern/internal/config"
+	"tern/internal/engine"
+	"tern/internal/events"
+	"tern/internal/runner"
+	"tern/internal/scheduler"
 	"tern/internal/store"
 	"tern/internal/vault"
 )
@@ -21,6 +26,14 @@ type Deps struct {
 	Limiter  *auth.Limiter
 	Version  string
 	Now      func() time.Time
+
+	// The execution core. Clock is the time source for everything about
+	// tasks and runs; it defaults to the real clock.
+	Clock     clock.Clock
+	Scheduler *scheduler.Scheduler
+	Runner    *runner.Runner
+	Registry  *engine.Registry
+	Events    *events.Hub
 }
 
 // API is the HTTP handler for the whole process.
@@ -30,6 +43,19 @@ type API struct {
 
 	setupMu sync.Mutex // one setup at a time
 	loginMu sync.Mutex // check-limit, verify and count as one step
+
+	closing   chan struct{} // closed by Close: event streams end
+	closeOnce sync.Once
+}
+
+// Close ends the long-lived event streams so the HTTP server can drain.
+// Ordinary requests are not affected.
+func (a *API) Close() { a.closeOnce.Do(func() { close(a.closing) }) }
+
+// syncPaused pauses scheduling exactly while the vault is not unlocked:
+// without it no run could get at its credentials.
+func (a *API) syncPaused() {
+	a.d.Scheduler.SetPaused(a.d.Vault.State() != vault.StateUnlocked)
 }
 
 // Guard is a precondition a route declares in Handle.
@@ -47,7 +73,10 @@ func New(d Deps) *API {
 	if d.Now == nil {
 		d.Now = time.Now
 	}
-	a := &API{d: d, mux: http.NewServeMux()}
+	if d.Clock == nil {
+		d.Clock = clock.Real
+	}
+	a := &API{d: d, mux: http.NewServeMux(), closing: make(chan struct{})}
 
 	a.Handle("GET /api/v1/status", a.handleStatus)
 	a.Handle("POST /api/v1/setup", a.handleSetup)
@@ -57,6 +86,8 @@ func New(d Deps) *API {
 	a.Handle("POST /api/v1/unlock", a.handleUnlock, NeedSession)
 	a.registerKeys()
 	a.registerConnections()
+	a.registerTasks()
+	a.registerRuns()
 
 	// Anything else under /api/, including a known path with the wrong method.
 	a.mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {

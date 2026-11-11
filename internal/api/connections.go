@@ -264,6 +264,17 @@ func (a *API) handleUpdateConnection(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) handleDeleteConnection(w http.ResponseWriter, r *http.Request) {
+	// Tasks keep their connection IDs inside their spec, where the database
+	// cannot enforce the reference.
+	users, err := a.d.Store.TasksUsingConnection(r.Context(), r.PathValue("id"))
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+	if len(users) > 0 {
+		writeError(w, http.StatusConflict, "in_use", "the connection is still used by: "+strings.Join(users, ", "), nil)
+		return
+	}
 	if err := a.d.Store.DeleteConnection(r.Context(), r.PathValue("id")); err != nil {
 		storeError(w, r, err, "connection")
 		return

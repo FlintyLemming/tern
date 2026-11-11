@@ -145,6 +145,7 @@ func (a *API) handleSetup(w http.ResponseWriter, r *http.Request) {
 		internalError(w, r, err)
 		return
 	}
+	a.syncPaused() // the vault exists and is open now: scheduling may begin
 	a.startSession(w, r, http.StatusCreated)
 }
 

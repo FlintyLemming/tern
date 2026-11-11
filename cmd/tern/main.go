@@ -40,7 +40,10 @@ func run() error {
 	}
 	<-ctx.Done()
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Runs in progress get SIGTERM, then proc.KillGrace (30s) until SIGKILL,
+	// then their record written: leave room for that. The container's stop
+	// grace period has to be at least as long.
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	return a.Shutdown(shutdownCtx)
 }
