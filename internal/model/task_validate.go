@@ -9,6 +9,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/robfig/cron/v3"
+
+	"tern/internal/engine/filter"
 )
 
 const maxScriptLen = 64 << 10
@@ -83,6 +85,14 @@ func (t Task) Validate() map[string]string {
 		}
 	}
 
+	excludes := func(field string, rules []string) {
+		for i, rule := range rules {
+			if filter.Validate(rule) != nil {
+				f[fmt.Sprintf("%s[%d]", field, i)] = "invalid"
+			}
+		}
+	}
+
 	set("name", CheckName(t.Name))
 	set("schedule", CheckSchedule(t.Schedule))
 	nonNeg("stale_after_sec", t.StaleAfterSec)
@@ -131,6 +141,7 @@ func (t Task) Validate() map[string]string {
 		for i, src := range b.Sources {
 			set(fmt.Sprintf("backup.sources[%d]", i), checkLocalPath(src))
 		}
+		excludes("backup.excludes", b.Excludes)
 		nonNeg("backup.limit_upload_kib", b.LimitUploadKiB)
 		if b.Connections < 1 || b.Connections > 64 {
 			f["backup.connections"] = "invalid"
@@ -157,6 +168,7 @@ func (t Task) Validate() map[string]string {
 			set(fmt.Sprintf("sync.pairs[%d].local", i), checkLocalPath(p.Local))
 			set(fmt.Sprintf("sync.pairs[%d].remote", i), checkRemotePath(p.Remote))
 		}
+		excludes("sync.excludes", s.Excludes)
 		nonNeg("sync.max_deletes", s.MaxDeletes)
 		nonNeg("sync.limit_kib", s.LimitKiB)
 		if s.Transfers < 0 || s.Transfers > 64 || (s.Protocol == "rsync" && s.Transfers != 0) {

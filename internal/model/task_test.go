@@ -248,3 +248,16 @@ func TestRunJSON(t *testing.T) {
 		t.Errorf("run JSON = %s", raw)
 	}
 }
+
+func TestTaskValidateExcludes(t *testing.T) {
+	s := syncTask()
+	s.Sync.Excludes = []string{"a/b", "*.tmp"}
+	if f := s.Validate(); f["sync.excludes[0]"] != "invalid" || len(f) != 1 {
+		t.Errorf("sync fields = %v", f)
+	}
+	b := backupTask()
+	b.Backup.Excludes = []string{"*.tmp", "!keep"}
+	if f := b.Validate(); f["backup.excludes[1]"] != "invalid" || len(f) != 1 {
+		t.Errorf("backup fields = %v", f)
+	}
+}
