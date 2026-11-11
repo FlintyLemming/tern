@@ -7,14 +7,25 @@ package integration
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/http/cookiejar"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
+	"time"
 
+	"tern/internal/app"
+	"tern/internal/config"
 	"tern/internal/model"
 	"tern/internal/rundir"
 	"tern/internal/sshx"
@@ -133,4 +144,321 @@ func remotePath(t *testing.T) string {
 		t.Fatalf("create %s on the remote end: exit %d, %s", path, code, stderr)
 	}
 	return path
+}
+
+// ---- application-level helpers: a whole tern node driven through its API ----
+
+const itestAdminPassword = "correct horse battery"
+
+// testApp is a running tern node and a logged-in API client for it.
+type testApp struct {
+	t       *testing.T
+	base    string
+	c       *http.Client
+	csrf    string
+	dataDir string
+
+	mu   sync.Mutex
+	keys map[string][]byte // connection ID → private key (PEM) of that connection
+}
+
+// mountedDir returns a new directory under /dev/shm. It lies on a mount,
+// so it satisfies mounts.IsMounted: restore targets and pull destinations
+// go here. It is world-readable so a non-root node can use it too.
+func mountedDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("/dev/shm", "tern-it")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	return dir
+}
+
+// adopt runs the setup wizard (keyfile mode, node name "nas-1") against a
+// node listening at base and returns a client for it.
+func adopt(t *testing.T, base, dataDir string) *testApp {
+	t.Helper()
+	jar, _ := cookiejar.New(nil)
+	a := &testApp{t: t, base: base, c: &http.Client{Jar: jar, Timeout: 5 * time.Minute}, dataDir: dataDir, keys: map[string][]byte{}}
+	var out struct {
+		CSRF string `json:"csrf_token"`
+	}
+	if code := a.do("POST", "/api/v1/setup", map[string]any{"password": itestAdminPassword, "node_name": "nas-1", "unlock_mode": "keyfile"}, &out); code != http.StatusCreated {
+		t.Fatalf("setup = %d", code)
+	}
+	a.csrf = out.CSRF
+	return a
+}
+
+// startApp starts a node in this process, with data, secrets and runtime
+// directories on /dev/shm, and completes its setup.
+func startApp(t *testing.T) *testApp {
+	t.Helper()
+	cfg := config.Config{Listen: "127.0.0.1:0", DataDir: mountedDir(t), SecretsDir: mountedDir(t), RuntimeDir: mountedDir(t)}
+	node, err := app.Start(context.Background(), cfg, "itest")
+	if err != nil {
+		t.Fatalf("start tern: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		node.Shutdown(ctx)
+	})
+	return adopt(t, "http://"+node.Addr(), cfg.DataDir)
+}
+
+var (
+	ternBinOnce sync.Once
+	ternBin     string
+	ternBinErr  error
+)
+
+// startAppAs builds the tern binary and runs it as another user, which
+// the in-process node (root in the test container) cannot do.
+func startAppAs(t *testing.T, uid, gid int) *testApp {
+	t.Helper()
+	ternBinOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "tern-bin") // not /dev/shm: that is mounted noexec
+		if err != nil {
+			ternBinErr = err
+			return
+		}
+		os.Chmod(dir, 0o755)
+		ternBin = filepath.Join(dir, "tern")
+		out, err := exec.Command("go", "build", "-o", ternBin, "tern/cmd/tern").CombinedOutput()
+		if err != nil {
+			ternBinErr = fmt.Errorf("go build: %v\n%s", err, out)
+		}
+	})
+	if ternBinErr != nil {
+		t.Fatal(ternBinErr)
+	}
+	dirs := []string{mountedDir(t), mountedDir(t), mountedDir(t)}
+	for _, d := range dirs {
+		if err := os.Chown(d, uid, gid); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	ln.Close()
+
+	var logs bytes.Buffer
+	cmd := exec.Command(ternBin)
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + dirs[0],
+		"TERN_LISTEN=" + addr, "TERN_DATA_DIR=" + dirs[0], "TERN_SECRETS_DIR=" + dirs[1], "TERN_RUNTIME_DIR=" + dirs[2]}
+	cmd.Stdout, cmd.Stderr = &logs, &logs
+	cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: uint32(uid), Gid: uint32(gid)}}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		cmd.Process.Signal(syscall.SIGTERM)
+		cmd.Wait()
+		if t.Failed() {
+			t.Logf("tern (uid %d) output:\n%s", uid, logs.String())
+		}
+	})
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		resp, err := http.Get("http://" + addr + "/api/v1/status")
+		if err == nil {
+			resp.Body.Close()
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("tern as uid %d did not come up: %v\n%s", uid, err, logs.String())
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return adopt(t, "http://"+addr, dirs[0])
+}
+
+// do sends an API request with the CSRF header and returns the status
+// code. body, when not nil, is sent as JSON; out, when not nil, receives
+// the decoded response.
+func (a *testApp) do(method, path string, body any, out any) int {
+	a.t.Helper()
+	var rd io.Reader
+	if body != nil {
+		raw, err := json.Marshal(body)
+		if err != nil {
+			a.t.Fatal(err)
+		}
+		rd = bytes.NewReader(raw)
+	}
+	req, err := http.NewRequest(method, a.base+path, rd)
+	if err != nil {
+		a.t.Fatal(err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if a.csrf != "" {
+		req.Header.Set("X-CSRF-Token", a.csrf)
+	}
+	resp, err := a.c.Do(req)
+	if err != nil {
+		a.t.Fatalf("%s %s: %v", method, path, err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	if out != nil && len(raw) > 0 {
+		if err := json.Unmarshal(raw, out); err != nil {
+			a.t.Fatalf("%s %s = %d, body is not the expected JSON: %v\n%s", method, path, resp.StatusCode, err, raw)
+		}
+	}
+	return resp.StatusCode
+}
+
+// must is do for calls that have to answer want.
+func (a *testApp) must(want int, method, path string, body any, out any) {
+	a.t.Helper()
+	var raw json.RawMessage
+	if code := a.do(method, path, body, &raw); code != want {
+		a.t.Fatalf("%s %s = %d, want %d\n%s", method, path, code, want, raw)
+	}
+	if out != nil {
+		if err := json.Unmarshal(raw, out); err != nil {
+			a.t.Fatalf("%s %s: %v\n%s", method, path, err, raw)
+		}
+	}
+}
+
+// sshConnection makes a key the remote sshd accepts, probes and confirms
+// the host fingerprint and creates the connection; it returns its ID. The
+// key is imported rather than generated inside tern so that tests can also
+// hand it to plain ssh and restic.
+func (a *testApp) sshConnection(t *testing.T) string {
+	t.Helper()
+	privPEM, p, err := sshx.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	appendAuthorized(t, p)
+	var key, probe, conn struct {
+		ID         string `json:"id"`
+		Authorized string `json:"authorized"`
+	}
+	a.must(http.StatusCreated, "POST", "/api/v1/ssh-keys", map[string]any{"name": "key-" + model.NewID(), "mode": "import", "private_key": string(privPEM)}, &key)
+	host, user := env(t, "TERN_ITEST_SSH_HOST"), env(t, "TERN_ITEST_SSH_USER")
+	a.must(http.StatusOK, "POST", "/api/v1/connections/probe", map[string]any{"host": host, "port": 22}, &probe)
+	a.must(http.StatusCreated, "POST", "/api/v1/connections", map[string]any{"type": "ssh", "name": "conn-" + model.NewID(),
+		"host": host, "port": 22, "username": user, "ssh_key_id": key.ID, "host_key": probe.Authorized}, &conn)
+	a.mu.Lock()
+	a.keys[conn.ID] = privPEM
+	a.mu.Unlock()
+	return conn.ID
+}
+
+// waitIdle waits until the task has no run queued or running.
+func (a *testApp) waitIdle(t *testing.T, taskID string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Minute)
+	for {
+		var ov struct {
+			Tasks []struct {
+				TaskID    string          `json:"task_id"`
+				ActiveRun json.RawMessage `json:"active_run"`
+			} `json:"tasks"`
+		}
+		a.must(http.StatusOK, "GET", "/api/v1/overview", nil, &ov)
+		busy := false
+		for _, it := range ov.Tasks {
+			if it.TaskID == taskID && string(it.ActiveRun) != "null" {
+				busy = true
+			}
+		}
+		if !busy {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("task %s still busy after 5 minutes", taskID)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+// waitRun polls a run until it is final, for at most 5 minutes.
+func (a *testApp) waitRun(t *testing.T, runID string) model.Run {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Minute)
+	for {
+		var run model.Run
+		a.must(http.StatusOK, "GET", "/api/v1/runs/"+runID, nil, &run)
+		if run.Status.Terminal() {
+			return run
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("run %s still %s after 5 minutes", runID, run.Status)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+// startRun starts a run of the task and returns its ID.
+func (a *testApp) startRun(t *testing.T, taskID string, body any) string {
+	t.Helper()
+	var out struct {
+		RunID string `json:"run_id"`
+	}
+	a.must(http.StatusAccepted, "POST", "/api/v1/tasks/"+taskID+"/run", body, &out)
+	return out.RunID
+}
+
+// runAndWait starts a run of the task (body as for POST …/run, nil for a
+// plain run) and waits for its final state.
+func (a *testApp) runAndWait(t *testing.T, taskID string, body any) model.Run {
+	t.Helper()
+	run := a.waitRun(t, a.startRun(t, taskID, body))
+	a.waitIdle(t, taskID)
+	return run
+}
+
+// runLog returns the log of a run, for failure messages.
+func (a *testApp) runLog(runID string) string {
+	raw, err := os.ReadFile(filepath.Join(a.dataDir, "logs", runID+".log"))
+	if err != nil {
+		var out json.RawMessage
+		a.do("GET", "/api/v1/runs/"+runID+"/log", nil, &out)
+		return string(out)
+	}
+	return string(raw)
+}
+
+// writeTree creates files under dir: relative path → content.
+func writeTree(t *testing.T, dir string, files map[string]string) {
+	t.Helper()
+	for rel, content := range files {
+		path := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// randomFile writes size bytes of incompressible data to path.
+func randomFile(t *testing.T, path string, size int64) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if _, err := io.CopyN(f, rand.Reader, size); err != nil {
+		t.Fatal(err)
+	}
 }
