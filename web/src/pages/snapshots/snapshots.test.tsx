@@ -4,7 +4,7 @@ import { afterEach } from 'vitest'
 import type { Snapshot, SnapshotList } from '../../api/types'
 import { fakeFetch, type Reply } from '../../test/fetch'
 import { backupTask, fiveTimes, sshConn, syncTask, system } from '../../test/data'
-import { Loc, renderRoutes } from '../../test/render'
+import { inMutationCache, Loc, renderRoutes } from '../../test/render'
 import { TaskEditor } from '../tasks/TaskEditor'
 import { SnapshotsPage } from './SnapshotsPage'
 
@@ -167,4 +167,15 @@ it('recovery info: cleared on close', async () => {
   dlg = await openRecovery(r)
   expect(within(dlg).getByLabelText('管理员密码')).toHaveValue('')
   expect(document.body.textContent).not.toContain('REPO-SECRET-PW')
+})
+
+it('recovery info: nothing of it stays in memory after close', async () => {
+  const r = renderAt('/tasks/t1', { 'POST /api/v1/tasks/t1/recovery-info': { body: info } })
+  const dlg = await openRecovery(r)
+  await r.user.type(within(dlg).getByLabelText('管理员密码'), 'admin-pw-for-recovery')
+  await r.user.click(within(dlg).getByRole('button', { name: '查看' }))
+  await within(dlg).findByText('REPO-SECRET-PW')
+  await r.user.click(within(dlg).getByRole('button', { name: '关闭' }))
+  await waitFor(() => expect(inMutationCache(r.qc, 'REPO-SECRET-PW')).toBe(false))
+  expect(inMutationCache(r.qc, 'admin-pw-for-recovery')).toBe(false)
 })

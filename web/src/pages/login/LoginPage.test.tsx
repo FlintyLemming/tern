@@ -4,7 +4,7 @@ import { Route } from 'react-router'
 import { afterEach } from 'vitest'
 import { AuthGate } from '../../shell/AuthGate'
 import { fakeFetch } from '../../test/fetch'
-import { Loc, renderRoutes } from '../../test/render'
+import { inMutationCache, Loc, renderRoutes } from '../../test/render'
 import { LoginPage } from './LoginPage'
 
 afterEach(() => {
@@ -69,4 +69,12 @@ it('login: honors next only for same-origin paths', async () => {
   await b.user.type(await screen.findByLabelText('管理员密码'), 'correct horse battery')
   await b.user.click(screen.getByRole('button', { name: '登录' }))
   await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent(/^\/$/))
+})
+
+it('login: a password does not linger in memory', async () => {
+  const { user, qc } = renderLogin('/login', { status: 401, body: { error: { code: 'unauthorized', message: 'wrong password' } } })
+  await user.type(await screen.findByLabelText('管理员密码'), 'almost-the-password')
+  await user.click(screen.getByRole('button', { name: '登录' }))
+  await screen.findByText('密码不对')
+  await waitFor(() => expect(inMutationCache(qc, 'almost-the-password')).toBe(false))
 })

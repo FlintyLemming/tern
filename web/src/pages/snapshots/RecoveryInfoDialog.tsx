@@ -7,7 +7,6 @@ import { useRecoveryInfo } from '../../api/queries'
 import type { Recovery } from '../../api/types'
 import { downloadText } from '../../lib/download'
 import { recoveryText } from '../../lib/recovery'
-import { Banner } from '../../ui/Banner'
 import { Button } from '../../ui/Button'
 import { CodeBlock } from '../../ui/CodeBlock'
 import { CopyButton } from '../../ui/CopyButton'
@@ -47,7 +46,10 @@ export function RecoveryInfoDialog({ taskId, taskName, open, onOpenChange }: { t
           setInfo(r)
           ask.reset() // the answer lives in this component only, not in the mutation cache
         },
-        onError: (err) => setError(err instanceof ApiError && err.status === 403 ? t('rec.wrong') : errorText(t, err)),
+        onError: (err) => {
+          ask.reset()
+          setError(err instanceof ApiError && err.status === 403 ? t('rec.wrong') : errorText(t, err))
+        },
       },
     )
   }
@@ -85,7 +87,6 @@ export function RecoveryInfoDialog({ taskId, taskName, open, onOpenChange }: { t
           <Field label={t('rec.password')} error={error}>
             <SecretInput value={password} onChange={(e) => setPassword(e.target.value)} autoFocus />
           </Field>
-          {ask.error instanceof ApiError && ask.error.status === 429 ? <Banner tone="danger">{errorText(t, ask.error)}</Banner> : null}
           <div className="flex justify-end">
             <Button variant="primary" type="submit" pending={ask.isPending}>
               {t('rec.show')}

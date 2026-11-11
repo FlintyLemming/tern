@@ -38,6 +38,7 @@ export function LoginPage() {
       markStatus(qc, { authenticated: true })
     },
     onError: (e) => {
+      login.reset() // the attempt held the password; what to show is kept below
       if (e instanceof ApiError && e.status === 429) {
         setNow(Date.now())
         setUntil(Date.now() + (e.retryAfter ?? 60) * 1000)

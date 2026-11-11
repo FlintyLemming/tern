@@ -21,7 +21,10 @@ export function UnlockPage() {
       setError(undefined)
       markStatus(qc, { vault_state: 'unlocked' })
     },
-    onError: (e) => setError(e instanceof ApiError && e.status === 403 ? t('unlock.wrong') : errorText(t, e)),
+    onError: (e) => {
+      unlock.reset() // the attempt held the passphrase
+      setError(e instanceof ApiError && e.status === 403 ? t('unlock.wrong') : errorText(t, e))
+    },
   })
 
   const submit = (ev: FormEvent) => {

@@ -106,6 +106,7 @@ export function ImportKeyDialog({ open, onOpenChange }: Props) {
           setPriv('')
           setPass('')
           setMade(k)
+          create.reset() // the request (with the key in it) is dropped as well
         },
       },
     )

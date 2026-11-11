@@ -103,10 +103,12 @@ function ChangePassword() {
   const [next, setNext] = useState('')
   const [again, setAgain] = useState('')
   const [errs, setErrs] = useState<Errs>({})
+  const [other, setOther] = useState<string>()
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
     if (change.isPending) return
+    setOther(undefined)
     const local: Errs = {}
     if (!cur) local.cur = t('v.required')
     const ne = secretError(next)
@@ -127,14 +129,15 @@ function ChangePassword() {
           navigate('/login')
         },
         onError: (er) => {
+          change.reset() // the attempt held both passwords
           setCur('')
           if (er instanceof ApiError && er.status === 403) setErrs({ cur: t('error.forbidden') })
           else if (fieldCodes(er).new_password) setErrs({ next: fieldText(t, fieldCodes(er).new_password) })
+          else setOther(errorText(t, er))
         },
       },
     )
   }
-  const other = change.isError && !(change.error instanceof ApiError && (change.error.status === 403 || change.error.code === 'validation'))
   return (
     <Card title={t('settings.password_title')}>
       <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
@@ -149,7 +152,7 @@ function ChangePassword() {
             <SecretInput value={again} onChange={(e) => setAgain(e.target.value)} />
           </Field>
         </div>
-        {other ? <Banner tone="danger">{errorText(t, change.error)}</Banner> : null}
+        {other ? <Banner tone="danger">{other}</Banner> : null}
         <div className="flex justify-end">
           <Button type="submit" pending={change.isPending}>
             {t('settings.change_password')}
@@ -169,6 +172,7 @@ function UnlockModeCard({ current }: { current?: UnlockMode }) {
   const [pp, setPp] = useState('')
   const [again, setAgain] = useState('')
   const [errs, setErrs] = useState<Errs>({})
+  const [other, setOther] = useState<string>()
 
   const clear = () => {
     setCur('')
@@ -178,6 +182,7 @@ function UnlockModeCard({ current }: { current?: UnlockMode }) {
   const submit = (e: FormEvent) => {
     e.preventDefault()
     if (sw.isPending) return
+    setOther(undefined)
     const local: Errs = {}
     if (!cur) local.cur = t('v.required')
     if (mode === 'passphrase') {
@@ -191,18 +196,20 @@ function UnlockModeCard({ current }: { current?: UnlockMode }) {
       { current_password: cur, mode, ...(mode === 'passphrase' ? { passphrase: pp } : {}) },
       {
         onSuccess: () => {
+          sw.reset() // the request held the password and the passphrase
           clear()
           toast(t('settings.unlock_switched'))
         },
         onError: (er) => {
+          sw.reset()
           setCur('')
           if (er instanceof ApiError && er.status === 403) setErrs({ cur: t('error.forbidden') })
           else if (fieldCodes(er).passphrase) setErrs({ pp: fieldText(t, fieldCodes(er).passphrase) })
+          else setOther(errorText(t, er))
         },
       },
     )
   }
-  const other = sw.isError && !(sw.error instanceof ApiError && (sw.error.status === 403 || sw.error.code === 'validation'))
   return (
     <Card title={t('settings.unlock_title')}>
       <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
@@ -232,7 +239,7 @@ function UnlockModeCard({ current }: { current?: UnlockMode }) {
             </Field>
           </div>
         ) : null}
-        {other ? <Banner tone="danger">{errorText(t, sw.error)}</Banner> : null}
+        {other ? <Banner tone="danger">{other}</Banner> : null}
         <div className="flex justify-end">
           <Button type="submit" pending={sw.isPending}>
             {t('settings.switch_unlock')}

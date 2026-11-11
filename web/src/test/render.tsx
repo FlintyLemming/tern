@@ -1,4 +1,5 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
+import { createQueryClient } from '../api/queryClient'
 import { render } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
@@ -12,7 +13,7 @@ export function Loc() {
 }
 
 export function newQueryClient() {
-  return new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { retry: false } } })
+  return createQueryClient({ queries: { retry: false, gcTime: Infinity }, mutations: { retry: false } })
 }
 
 // renderRoutes renders <Route> elements inside every provider the app has.
@@ -29,4 +30,13 @@ export function renderRoutes(routes: ReactNode, path = '/', opts: { qc?: QueryCl
     </QueryClientProvider>,
   )
   return { qc, user, ...utils }
+}
+
+// inMutationCache reports whether any mutation the client still holds
+// (variables, result or error) contains the text.
+export function inMutationCache(qc: QueryClient, text: string): boolean {
+  return qc
+    .getMutationCache()
+    .getAll()
+    .some((m) => JSON.stringify(m.state).includes(text))
 }

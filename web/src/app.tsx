@@ -1,9 +1,10 @@
-import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { BrowserRouter, Link, Route, Routes, useNavigate } from 'react-router'
-import { ApiError, configureClient } from './api/client'
-import { forgetSession, qk } from './api/queries'
+import { configureClient } from './api/client'
+import { forgetSession } from './api/queries'
+import { createQueryClient } from './api/queryClient'
 import { ConnectionsPage } from './pages/connections/ConnectionsPage'
 import { LoginPage } from './pages/login/LoginPage'
 import { TaskEditor } from './pages/tasks/TaskEditor'
@@ -21,23 +22,7 @@ import { EmptyState } from './ui/EmptyState'
 import { Toaster } from './ui/Toast'
 import './i18n'
 
-const queryClient: QueryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      // a 4xx will not change by asking again; network trouble and 5xx may
-      retry: (n, e) => n < 2 && !(e instanceof ApiError && e.status >= 400 && e.status < 500),
-      refetchOnWindowFocus: true,
-    },
-  },
-  queryCache: new QueryCache({
-    onError: (e) => {
-      // the vault got locked under us: let the gate send us to /unlock
-      if (e instanceof ApiError && (e.code === 'vault_locked' || e.code === 'vault_unavailable')) {
-        void queryClient.invalidateQueries({ queryKey: qk.status })
-      }
-    },
-  }),
-})
+const queryClient = createQueryClient()
 
 function ClientWiring() {
   const navigate = useNavigate()

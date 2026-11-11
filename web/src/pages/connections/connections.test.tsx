@@ -3,7 +3,7 @@ import { Route } from 'react-router'
 import { afterEach } from 'vitest'
 import { fakeFetch, type Reply } from '../../test/fetch'
 import { davConn, key, sshConn, system } from '../../test/data'
-import { renderRoutes } from '../../test/render'
+import { inMutationCache, renderRoutes } from '../../test/render'
 import { choose } from '../../test/select'
 import { ConnectionsPage } from './ConnectionsPage'
 
@@ -215,4 +215,18 @@ it.each(testRows)('test connection: shows message per kind (%s)', async (_k, res
   const row = (await screen.findByText('nas2')).closest('tr')!
   await user.click(within(row).getByRole('button', { name: '测试连接' }))
   expect(await screen.findByText(text)).toBeInTheDocument()
+})
+
+it('keys: import leaves no private key or passphrase in memory', async () => {
+  const { user, qc } = renderPage({ 'POST /api/v1/ssh-keys': { status: 201, body: { ...key, id: 'k3', name: 'imported' } } }, 'keys')
+  await user.click(await screen.findByRole('button', { name: '导入密钥' }))
+  const dlg = await screen.findByRole('dialog')
+  await user.type(within(dlg).getByLabelText('名称'), 'imported')
+  await user.click(within(dlg).getByLabelText('私钥'))
+  await user.paste(PRIV)
+  await user.type(within(dlg).getByLabelText('私钥口令（可选）'), 'key-passphrase-xyz')
+  await user.click(within(dlg).getByRole('button', { name: '导入' }))
+  await screen.findByText(key.public_key)
+  await waitFor(() => expect(inMutationCache(qc, 'PRIVATE KEY')).toBe(false))
+  expect(inMutationCache(qc, 'key-passphrase-xyz')).toBe(false)
 })

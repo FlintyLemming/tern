@@ -3,7 +3,7 @@ import { Route } from 'react-router'
 import { afterEach } from 'vitest'
 import { fakeFetch, type Reply } from '../../test/fetch'
 import { system } from '../../test/data'
-import { Loc, renderRoutes } from '../../test/render'
+import { inMutationCache, Loc, renderRoutes } from '../../test/render'
 import { SettingsPage } from './SettingsPage'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -107,4 +107,17 @@ it('language switch persists', async () => {
 it('explains a zone the browser cannot name', async () => {
   renderSettings({}, { ...system, timezone: 'Local' })
   expect(await screen.findByText('容器没有设置 TZ 环境变量，界面上的时间按 UTC 显示。')).toBeInTheDocument()
+})
+
+it('switching unlock mode leaves no passphrase in memory', async () => {
+  const { user, qc } = renderSettings({ 'POST /api/v1/settings/unlock-mode': { status: 204 } })
+  const card = (await screen.findByRole('heading', { name: '解锁方式' })).closest('section')!
+  await user.click(within(card).getByRole('radio', { name: /^口令/ }))
+  await user.type(within(card).getByLabelText('当前密码'), 'admin password 1')
+  await user.type(within(card).getByLabelText('新口令'), 'secret-passphrase-zz')
+  await user.type(within(card).getByLabelText('再输一遍新口令'), 'secret-passphrase-zz')
+  await user.click(within(card).getByRole('button', { name: '切换解锁方式' }))
+  await waitFor(() => expect(within(card).getByLabelText('当前密码')).toHaveValue(''))
+  await waitFor(() => expect(inMutationCache(qc, 'secret-passphrase-zz')).toBe(false))
+  expect(inMutationCache(qc, 'admin password 1')).toBe(false)
 })
