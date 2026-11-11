@@ -1,0 +1,10 @@
+.git
+.dev
+.claude
+.superpowers
+bin
+web/node_modules
+web/dist
+web/*.tsbuildinfo
+test
+docs

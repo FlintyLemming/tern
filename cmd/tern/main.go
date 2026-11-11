@@ -16,9 +16,14 @@ import (
 var version = "dev"
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "--version" {
-		fmt.Println("tern", version)
-		return
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "--version":
+			fmt.Println("tern", version)
+			return
+		case "--healthcheck":
+			os.Exit(healthcheck(os.Getenv))
+		}
 	}
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "tern:", err)

@@ -1,7 +1,8 @@
 #!/bin/sh
 # Downloads the pinned restic and rclone builds for $TARGETARCH, verifies
 # their SHA256 against the values below, and installs them into <dest>.
-# Nothing is installed unless both archives verify.
+# Nothing is installed unless both archives verify. Needs only what busybox
+# brings: wget, sha256sum, bunzip2, unzip.
 #
 # usage: TARGETARCH=amd64|arm64 fetch-tools.sh <dest-dir>
 set -eu
@@ -46,11 +47,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 fetch() { # <url> <output file>
-	if command -v curl >/dev/null 2>&1; then
-		curl -fsSL --retry 3 -o "$2" "$1"
-	else
-		wget -q -O "$2" "$1"
-	fi || die "download failed: $1"
+	wget -q -O "$2" "$1" || die "download failed: $1"
 }
 
 verify() { # <file> <expected sha256>

@@ -1,6 +1,14 @@
 VERSION ?= dev
+# Base images come from Docker Hub unless TERN_BASE_REGISTRY names a mirror
+# of its official images, e.g. public.ecr.aws/docker/library.
+BASE_REGISTRY ?= $(or $(TERN_BASE_REGISTRY),docker.io/library)
+# Go modules come from proxy.golang.org unless TERN_GOPROXY names another
+# module proxy; go.sum pins every module either way.
+GOPROXY_IMAGE ?= $(or $(TERN_GOPROXY),https://proxy.golang.org$(comma)direct)
+comma := ,
+PLATFORMS ?= linux/amd64,linux/arm64
 
-.PHONY: test vet web build itest
+.PHONY: test vet web build itest image image-test
 
 test:
 	go test ./...
@@ -21,3 +29,17 @@ build: web
 itest:
 	docker compose -f test/integration/compose.yaml run --rm --build runner \
 	  go test -tags integration -count=1 ./internal/... ./test/integration/...
+
+# The production image for both architectures, loaded locally as tern:$(VERSION).
+# Nothing is pushed anywhere.
+image:
+	docker buildx build --platform $(PLATFORMS) -f deploy/Dockerfile \
+	  --build-arg VERSION=$(VERSION) --build-arg BASE_REGISTRY=$(BASE_REGISTRY) \
+	  --build-arg GOPROXY=$(GOPROXY_IMAGE) \
+	  -t tern:$(VERSION) .
+
+# Tests the image from the outside with the docker command line. Both
+# architectures are built: one test runs the tools of each.
+image-test:
+	$(MAKE) image VERSION=image-test
+	TERN_IMAGE=tern:image-test go test -tags image -count=1 -timeout 30m ./test/image/...
