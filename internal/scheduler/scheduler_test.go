@@ -103,6 +103,14 @@ func newFx(t *testing.T, start time.Time) *fx {
 	reg.Register(model.TaskSync, func(task model.Task, req engine.Request) (engine.Engine, error) {
 		return f.engine(task.Name), nil
 	})
+	// Backup tasks: the backup itself uses the engine called like the
+	// task, maintenance runs the ones called "<task>/prune" and "<task>/check".
+	reg.Register(model.TaskBackup, func(task model.Task, req engine.Request) (engine.Engine, error) {
+		if req.Kind == model.RunBackup {
+			return f.engine(task.Name), nil
+		}
+		return f.engine(task.Name + "/" + string(req.Kind)), nil
+	})
 	r := &runner.Runner{Store: st, Registry: reg, Events: f.hub, Clock: f.clk, DataDir: t.TempDir(), RuntimeDir: t.TempDir()}
 	f.s = New(Deps{Store: st, Runner: r, Clock: f.clk, Events: f.hub})
 	t.Cleanup(func() {

@@ -342,14 +342,22 @@ func (s *Scheduler) carry(ctx context.Context, a *activeRun, slot *jobSlot, run 
 	defer s.wg.Done()
 	defer a.cancel(nil)
 	var once sync.Once
-	// done frees the slot and the task. It runs before the final event is
-	// published, so whoever reacts to that event finds the task free.
+	// done frees the slot and the task, and queues the maintenance run
+	// that is due after this one. It runs before the final event is
+	// published, so whoever reacts to that event finds the task free or
+	// already taken by its follow-up, never in between.
 	done := func() {
 		once.Do(func() {
 			slot.Release()
+			final, err := s.d.Store.GetRun(context.Background(), run.ID)
 			s.mu.Lock()
 			if s.active[run.TaskID] == a {
 				delete(s.active, run.TaskID)
+			}
+			if err == nil && final.Status.Terminal() {
+				// Under the same lock that frees the task: the follow-up
+				// takes the task's place before anything else can.
+				s.afterRunLocked(final)
 			}
 			s.mu.Unlock()
 			s.wakeLoop()

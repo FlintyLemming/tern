@@ -52,6 +52,10 @@ func NewBuilder(d Deps) engine.Builder {
 		switch req.Kind {
 		case model.RunBackup:
 			return &backupEngine{s}, nil
+		case model.RunPrune:
+			return &maintEngine{session: s, unit: "prune"}, nil
+		case model.RunCheck:
+			return &maintEngine{session: s, unit: "check"}, nil
 		}
 		return nil, configErr("a backup task cannot do a %q run", req.Kind)
 	}

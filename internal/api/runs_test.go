@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"tern/internal/engine/fake"
 	"tern/internal/model"
 )
 
@@ -45,6 +46,7 @@ func TestRunKindMismatch(t *testing.T) {
 	h := readyHarness(t)
 	syncTask := h.newSyncTask("photos")
 	backupTask := h.newTask(backupBody("docs", h.sshConnID()))
+	h.noMaintenance(backupTask) // or the manual runs below would meet automatic ones
 	for _, c := range []struct {
 		task map[string]any
 		kind string
@@ -279,4 +281,79 @@ func TestSchedulerResumesAfterSetup(t *testing.T) {
 	h := newHarness(t) // not set up: no vault, scheduler paused
 	h.setup("keyfile")
 	h.rec.final(t, h.runNow(h.newSyncTask("photos"), nil))
+}
+
+// noMaintenance switches off the automatic prune and check of a backup task.
+func (h *harness) noMaintenance(task map[string]any) {
+	h.t.Helper()
+	w := h.update(task, func(b map[string]any) {
+		spec := map[string]any{}
+		for k, v := range b["backup"].(map[string]any) {
+			spec[k] = v
+		}
+		spec["prune_every_days"], spec["check_every_days"] = 0, 0
+		b["backup"] = spec
+	}).w
+	if w.Code != http.StatusOK {
+		h.t.Fatalf("switch off maintenance = %d %s", w.Code, w.Body)
+	}
+}
+
+// settle waits until no run of the task is queued or running any more.
+func (h *harness) settle(task map[string]any) {
+	h.t.Helper()
+	id := task["id"].(string)
+	for {
+		runID, ok := h.sched.ActiveRun(id)
+		if !ok {
+			return
+		}
+		h.rec.final(h.t, runID)
+	}
+}
+
+func TestOverviewMaintenance(t *testing.T) {
+	h := readyHarness(t)
+	task := h.newTask(backupBody("docs", h.sshConnID()))
+	id := task["id"].(string)
+	o := overviewOf(t, h, id)
+	if o["last_prune_at"] != nil || o["last_check_at"] != nil || o["last_check_status"] != "" {
+		t.Errorf("fresh task: %v", o)
+	}
+
+	// The first backup is followed by a prune and a check, both overdue.
+	h.rec.final(t, h.runNow(task, nil))
+	h.settle(task)
+	o = overviewOf(t, h, id)
+	if o["last_prune_at"] != "2026-11-10T12:00:00Z" || o["last_check_at"] != "2026-11-10T12:00:00Z" || o["last_check_status"] != "success" {
+		t.Errorf("after backup, prune and check: %v", o)
+	}
+	if o["last_status"] != "success" || o["last_success_at"] != "2026-11-10T12:00:00Z" {
+		t.Errorf("backup status: %v", o)
+	}
+
+	// A check that fails is reported as such and leaves the rest alone.
+	h.advance(time.Hour)
+	h.enginesMu.Lock()
+	h.engines["docs"] = &fake.Engine{Results: map[int][]fake.Outcome{0: {{Err: &model.KindError{Kind: model.KindConfig, Msg: "repository contains errors"}}}}}
+	h.enginesMu.Unlock()
+	if got := h.rec.final(t, h.runNow(task, map[string]any{"kind": "check"})); got.Status != model.StatusFailed {
+		t.Fatalf("check = %s", got.Status)
+	}
+	o = overviewOf(t, h, id)
+	if o["last_check_status"] != "failed" || o["last_check_at"] != "2026-11-10T12:00:00Z" {
+		t.Errorf("after a failed check: %v", o)
+	}
+	if o["last_status"] != "success" || o["last_run_at"] != "2026-11-10T12:00:00Z" || o["last_success_at"] != "2026-11-10T12:00:00Z" {
+		t.Errorf("a failed check changed the backup's own status: %v", o)
+	}
+}
+
+func TestOverviewSyncHasNoMaintenance(t *testing.T) {
+	h := readyHarness(t)
+	task := h.newSyncTask("photos")
+	o := overviewOf(t, h, task["id"].(string))
+	if o["last_prune_at"] != nil || o["last_check_at"] != nil || o["last_check_status"] != "" {
+		t.Errorf("sync task: %v", o)
+	}
 }

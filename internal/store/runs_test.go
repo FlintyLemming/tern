@@ -319,3 +319,41 @@ func TestPruneRuns(t *testing.T) {
 		}
 	}
 }
+
+func TestLastRunOfKinds(t *testing.T) {
+	s := open(t, t.TempDir())
+	ctx := context.Background()
+	if _, ok, err := s.LastRunOfKinds(ctx, "t1", model.RunBackup); ok || err != nil {
+		t.Fatalf("on empty = %v, %v", ok, err)
+	}
+	backup := newRun("t1", model.RunBackup, t0)
+	mustCreateRun(t, s, backup)
+	finish(t, s, backup, model.StatusSuccess)
+	prune := newRun("t1", model.RunPrune, t0.Add(time.Hour))
+	mustCreateRun(t, s, prune)
+	finish(t, s, prune, model.StatusFailed)
+	check := newRun("t1", model.RunCheck, t0.Add(2*time.Hour))
+	mustCreateRun(t, s, check)
+	finish(t, s, check, model.StatusFailed)
+	mustCreateRun(t, s, newRun("t1", model.RunCheck, t0.Add(3*time.Hour))) // still queued
+	other := newRun("t2", model.RunBackup, t0.Add(4*time.Hour))
+	mustCreateRun(t, s, other)
+	finish(t, s, other, model.StatusFailed)
+
+	for _, c := range []struct {
+		kinds []model.RunKind
+		want  string
+	}{
+		{[]model.RunKind{model.RunBackup, model.RunSync}, backup.ID},
+		{[]model.RunKind{model.RunCheck}, check.ID},
+		{[]model.RunKind{model.RunPrune, model.RunCheck}, check.ID},
+	} {
+		got, ok, err := s.LastRunOfKinds(ctx, "t1", c.kinds...)
+		if err != nil || !ok || got.ID != c.want {
+			t.Errorf("LastRunOfKinds(%v) = %s, %v, %v; want %s", c.kinds, got.ID, ok, err, c.want)
+		}
+	}
+	if _, ok, _ := s.LastRunOfKinds(ctx, "t1", model.RunRestore); ok {
+		t.Error("found a restore run")
+	}
+}

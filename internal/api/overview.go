@@ -28,6 +28,12 @@ type overviewItem struct {
 	Stale         bool           `json:"stale"` // too long without a success: the UI must not let this pass quietly
 	StaleAfterSec int64          `json:"stale_after_sec"`
 	ActiveRun     *activeRunJSON `json:"active_run"`
+
+	// Repository maintenance of a backup task. These are runs of their
+	// own and never change last_status.
+	LastPruneAt     *string      `json:"last_prune_at"`
+	LastCheckAt     *string      `json:"last_check_at"`
+	LastCheckStatus model.Status `json:"last_check_status"` // of the latest check run; "" when there is none
 }
 
 func timePtr(t time.Time) *string {
@@ -58,13 +64,26 @@ func (a *API) handleOverview(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		it.LastSuccessAt = timePtr(st.LastSuccessAt)
-		last, ok, err := a.d.Store.LastRun(ctx, t.ID)
+		// The task's own work: prune, check, restore and dry runs are
+		// recorded separately and do not say how the backup or sync went.
+		last, ok, err := a.d.Store.LastRunOfKinds(ctx, t.ID, model.RunBackup, model.RunSync)
 		if err != nil {
 			internalError(w, r, err)
 			return
 		}
 		if ok {
 			it.LastStatus, it.LastRunAt = last.Status, timePtr(last.StartedAt)
+		}
+		if t.Type == model.TaskBackup {
+			it.LastPruneAt, it.LastCheckAt = timePtr(st.LastPruneAt), timePtr(st.LastCheckAt)
+			check, ok, err := a.d.Store.LastRunOfKinds(ctx, t.ID, model.RunCheck)
+			if err != nil {
+				internalError(w, r, err)
+				return
+			}
+			if ok {
+				it.LastCheckStatus = check.Status
+			}
 		}
 		if t.Enabled && t.Schedule != "" {
 			if next, err := scheduler.NextRuns(t.Schedule, now, 1); err == nil {

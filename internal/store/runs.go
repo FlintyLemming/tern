@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"tern/internal/model"
@@ -242,6 +243,25 @@ func (s *Store) ListRuns(ctx context.Context, f RunFilter) ([]model.Run, error) 
 func (s *Store) LastRun(ctx context.Context, taskID string) (model.Run, bool, error) {
 	r, err := scanRun(s.db.QueryRowContext(ctx, "SELECT "+runColumns+
 		" FROM runs WHERE task_id = ? AND seq IS NOT NULL ORDER BY seq DESC LIMIT 1", taskID))
+	if errors.Is(err, ErrNotFound) {
+		return model.Run{}, false, nil
+	}
+	return r, err == nil, err
+}
+
+// LastRunOfKinds returns the run of taskID that finished most recently
+// among those of the given kinds.
+func (s *Store) LastRunOfKinds(ctx context.Context, taskID string, kinds ...model.RunKind) (model.Run, bool, error) {
+	if len(kinds) == 0 {
+		return model.Run{}, false, nil
+	}
+	args := []any{taskID}
+	for _, k := range kinds {
+		args = append(args, string(k))
+	}
+	r, err := scanRun(s.db.QueryRowContext(ctx, "SELECT "+runColumns+
+		" FROM runs WHERE task_id = ? AND seq IS NOT NULL AND kind IN (?"+strings.Repeat(", ?", len(kinds)-1)+
+		") ORDER BY seq DESC LIMIT 1", args...))
 	if errors.Is(err, ErrNotFound) {
 		return model.Run{}, false, nil
 	}
