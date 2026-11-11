@@ -28,6 +28,7 @@ import (
 	"tern/internal/scheduler"
 	"tern/internal/store"
 	"tern/internal/vault"
+	"tern/web"
 )
 
 // App is a running tern node.
@@ -143,6 +144,7 @@ func startWithStore(ctx context.Context, cfg config.Config, version string, st *
 		Registry:  registry,
 		Events:    hub,
 	})
+	h.ServeStatic(web.Dist())
 
 	ln, err := net.Listen("tcp", cfg.Listen)
 	if err != nil {

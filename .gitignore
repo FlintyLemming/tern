@@ -2,3 +2,4 @@
 /.dev/
 /web/node_modules/
 .DS_Store
+/web/dist/

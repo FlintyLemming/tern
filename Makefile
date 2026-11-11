@@ -1,6 +1,6 @@
 VERSION ?= dev
 
-.PHONY: test vet build itest
+.PHONY: test vet web build itest
 
 test:
 	go test ./...
@@ -8,8 +8,13 @@ test:
 vet:
 	go vet ./...
 
-build:
-	CGO_ENABLED=0 go build -trimpath -ldflags "-X main.version=$(VERSION)" -o bin/tern ./cmd/tern
+# The web interface; build embeds it into the binary.
+web:
+	npm --prefix web ci
+	npm --prefix web run build
+
+build: web
+	CGO_ENABLED=0 go build -tags embedweb -trimpath -ldflags "-X main.version=$(VERSION)" -o bin/tern ./cmd/tern
 
 # Integration tests: real sshd, restic, rclone and rsync in a compose
 # environment. ./internal/... is included so Linux-only tests run too.

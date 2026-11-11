@@ -2,6 +2,9 @@ module tern
 
 go 1.26.0
 
+// npm packages, not Go code.
+ignore ./web/node_modules
+
 require (
 	github.com/robfig/cron/v3 v3.0.1
 	golang.org/x/crypto v0.58.0

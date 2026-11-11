@@ -1,0 +1,52 @@
+/* Design tokens, taken value for value from DESIGN-notion.md.
+   The one addition is --color-danger (failures, alerts, destructive actions). */
+:root {
+  /* structure: the only structural colour is primary */
+  --color-primary: #0075de;
+  --color-primary-active: #005bab;
+  --color-on-primary: #ffffff;
+
+  /* surfaces */
+  --color-canvas: #ffffff;
+  --color-canvas-soft: #f6f5f4;
+  --color-surface: #ffffff;
+  --color-hairline: #e6e6e6;
+  --color-input-border: rgb(221, 221, 221);
+
+  /* text */
+  --color-ink: #000000;
+  --color-ink-secondary: #31302e;
+  --color-ink-muted: #615d59;
+  --color-ink-faint: #a39e98;
+
+  /* sticker colours: status dots only */
+  --color-accent-sky: #62aef0;
+  --color-accent-orange: #dd5b00;
+  --color-accent-green: #1aae39;
+
+  /* the one new token */
+  --color-danger: #d44c47;
+
+  --radius-xs: 4px;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  --space-xxs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 28px;
+  --space-xxl: 32px;
+
+  --shadow-1: rgba(0, 0, 0, 0.01) 0 0.175px 1.041px, rgba(0, 0, 0, 0.02) 0 0.8px 2.925px,
+    rgba(0, 0, 0, 0.027) 0 2.025px 7.847px, rgba(0, 0, 0, 0.04) 0 4px 18px;
+  --shadow-2: rgba(0, 0, 0, 0.01) 0 0.175px 1.041px, rgba(0, 0, 0, 0.02) 0 0.8px 2.925px,
+    rgba(0, 0, 0, 0.027) 0 2.025px 7.847px, rgba(0, 0, 0, 0.04) 0 4px 18px, rgba(0, 0, 0, 0.05) 0 23px 52px;
+
+  --font-sans: 'Inter Variable', Inter, -apple-system, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
