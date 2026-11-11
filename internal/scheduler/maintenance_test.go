@@ -94,21 +94,20 @@ func kinds(runs []model.Run) []model.RunKind {
 // settle waits until every run of the task so far is final and returns
 // them, oldest first. Follow-up runs are queued before their predecessor's
 // final event goes out, so the list is complete once nothing is unfinished.
+//
+// It goes by the final events, not by the stored statuses: a run is stored
+// as finished just before the scheduler queues its follow-up, and only the
+// final event comes after that.
 func (f *fx) settle(taskID string) []model.Run {
 	f.t.Helper()
 	for {
 		runs := f.runs(taskID)
-		pending := ""
 		for _, r := range runs {
-			if !r.Status.Terminal() {
-				pending = r.ID
-				break
-			}
+			f.rec.final(f.t, r.ID)
 		}
-		if pending == "" {
-			return runs
+		if again := f.runs(taskID); len(again) == len(runs) {
+			return again
 		}
-		f.rec.final(f.t, pending)
 	}
 }
 
