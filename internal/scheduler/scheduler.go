@@ -35,6 +35,9 @@ const (
 	// maxLookBack bounds the walk over missed scheduled times after a long
 	// downtime or a wild clock jump.
 	maxLookBack = 366 * 24 * time.Hour
+	// maxClockStepBack is the largest backward clock correction across
+	// which a scheduled time is guaranteed not to fire twice.
+	maxClockStepBack = 25 * time.Hour
 )
 
 type Deps struct {
@@ -238,7 +241,10 @@ func (s *Scheduler) fire(ctx context.Context, t model.Task, f, now time.Time) {
 		s.d.Log.Error("scheduler cannot read task state", "task", t.Name, "err", err)
 		return
 	}
-	if !f.After(st.LastFireAt) {
+	// A last_fire_at far ahead of now was written while the clock was
+	// wrong; believing it would silently hold the task back until then.
+	// Within the tolerance it is what stops a repeat after a step back.
+	if !f.After(st.LastFireAt) && st.LastFireAt.Sub(now) <= maxClockStepBack {
 		return // already dealt with, before a restart or a clock step back
 	}
 	// Recorded first: after a crash right here the time counts as handled,
@@ -325,15 +331,16 @@ func (s *Scheduler) startLocked(ctx context.Context, t model.Task, req engine.Re
 	s.active[t.ID] = a
 	s.d.Events.Publish(events.Event{Type: events.RunUpdated, Data: run})
 	s.wg.Add(1)
-	go s.carry(runCtx, a, run, runner.Job{RunID: run.ID, Task: t, Req: req, Trigger: tr})
+	// The place in the queue is taken here, in the order runs are queued.
+	slot := &jobSlot{sem: s.sem, tk: s.sem.reserve()}
+	go s.carry(runCtx, a, slot, run, runner.Job{RunID: run.ID, Task: t, Req: req, Trigger: tr})
 	return run.ID, nil
 }
 
 // carry takes one run from the queue to its end.
-func (s *Scheduler) carry(ctx context.Context, a *activeRun, run model.Run, job runner.Job) {
+func (s *Scheduler) carry(ctx context.Context, a *activeRun, slot *jobSlot, run model.Run, job runner.Job) {
 	defer s.wg.Done()
 	defer a.cancel(nil)
-	slot := &jobSlot{sem: s.sem}
 	var once sync.Once
 	// done frees the slot and the task. It runs before the final event is
 	// published, so whoever reacts to that event finds the task free.
@@ -462,32 +469,44 @@ func (s *slots) setCapacity(n int) {
 	s.grantLocked()
 }
 
-func (s *slots) acquire(ctx context.Context) error {
-	s.mu.Lock()
-	if err := ctx.Err(); err != nil {
-		s.mu.Unlock()
-		return context.Cause(ctx)
-	}
-	ch := make(chan struct{})
-	s.waiters = append(s.waiters, ch)
-	s.grantLocked()
-	s.mu.Unlock()
+// ticket is a place in the queue.
+type ticket struct {
+	s  *slots
+	ch chan struct{} // closed when the slot is granted
+}
 
-	select {
-	case <-ch:
-		return nil
-	case <-ctx.Done():
+// reserve takes the next place in the queue, and the slot itself if one is
+// free. Order is decided here, at the time a run is queued.
+func (s *slots) reserve() *ticket {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tk := &ticket{s: s, ch: make(chan struct{})}
+	s.waiters = append(s.waiters, tk.ch)
+	s.grantLocked()
+	return tk
+}
+
+// wait blocks until the slot is granted. If ctx ends first, or has ended
+// already, the place in the queue (or the slot, if it was granted in the
+// meantime) is given up and the cancel cause returned.
+func (tk *ticket) wait(ctx context.Context) error {
+	if ctx.Err() == nil {
+		select {
+		case <-tk.ch:
+			return nil
+		case <-ctx.Done():
+		}
 	}
+	s := tk.s
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i, w := range s.waiters {
-		if w == ch {
+		if w == tk.ch {
 			s.waiters = append(s.waiters[:i], s.waiters[i+1:]...)
 			return context.Cause(ctx)
 		}
 	}
-	// Granted in the same instant: give it back.
-	s.used--
+	s.used-- // was granted: give it back
 	s.grantLocked()
 	return context.Cause(ctx)
 }
@@ -504,11 +523,19 @@ func (s *slots) release() {
 type jobSlot struct {
 	sem  *slots
 	mu   sync.Mutex
+	tk   *ticket // the reservation made when the run was queued, until used
 	held bool
 }
 
 func (j *jobSlot) Acquire(ctx context.Context) error {
-	if err := j.sem.acquire(ctx); err != nil {
+	j.mu.Lock()
+	tk := j.tk
+	j.tk = nil
+	j.mu.Unlock()
+	if tk == nil {
+		tk = j.sem.reserve() // coming back from a retry wait: end of the queue
+	}
+	if err := tk.wait(ctx); err != nil {
 		return err
 	}
 	j.mu.Lock()

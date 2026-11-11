@@ -608,3 +608,28 @@ func TestBrokenScheduleDoesNotStall(t *testing.T) {
 		t.Errorf("runs = %+v", runs)
 	}
 }
+
+// A node that once ran with its clock far in the future (dead RTC battery,
+// bad NTP answer) has scheduled times "handled" that have not happened yet.
+// They must not keep the task from running once the clock is right.
+func TestFutureLastFireDoesNotBlock(t *testing.T) {
+	f := newFx(t, at(10, 2, 59))
+	task := f.addTask("photos", "0 3 * * *")
+	err := f.st.SetTaskState(context.Background(), task.ID, func(ts *store.TaskState) {
+		ts.LastFireAt = time.Date(2029, 6, 1, 3, 0, 0, 0, time.UTC)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.start()
+	f.tick(time.Minute)
+	runs := f.runs(task.ID)
+	if len(runs) != 1 || runs[0].Trigger != model.TriggerSchedule {
+		t.Fatalf("runs = %+v, want the 03:00 run despite last_fire_at in 2029", runs)
+	}
+	f.rec.final(t, runs[0].ID)
+	f.tick(time.Minute)
+	if n := len(f.runs(task.ID)); n != 1 {
+		t.Errorf("%d runs: the corrected last_fire_at must still prevent a repeat", n)
+	}
+}
