@@ -54,8 +54,9 @@ type Scheduler struct {
 	paused bool
 	closed bool
 
-	passMu   sync.Mutex // one scheduling pass at a time
-	lastTick time.Time
+	passMu        sync.Mutex // one scheduling pass at a time
+	lastTick      time.Time
+	lastHousekeep time.Time
 
 	wake     chan struct{}
 	stop     chan struct{}
@@ -138,11 +139,7 @@ func (s *Scheduler) wakeLoop() {
 }
 
 func (s *Scheduler) maxConcurrent(ctx context.Context) int {
-	raw, ok, err := s.d.Store.GetMeta(ctx, MetaMaxConcurrent)
-	if n, perr := strconv.Atoi(raw); err == nil && ok && perr == nil && n >= 1 {
-		return n
-	}
-	return 1
+	return s.metaInt(ctx, MetaMaxConcurrent, DefaultMaxConcurrent)
 }
 
 // Reload applies changed settings now and has the loop look at the tasks
@@ -165,8 +162,11 @@ func (s *Scheduler) pass() time.Duration {
 	s.sem.setCapacity(s.maxConcurrent(ctx))
 
 	s.mu.Lock()
-	idle := s.paused || s.closed
+	closed, idle := s.closed, s.paused || s.closed
 	s.mu.Unlock()
+	if !closed {
+		s.housekeepIfDue(ctx, s.d.Clock.Now()) // needs no credentials: also while paused
+	}
 	if idle {
 		// lastTick stays put: what comes due meanwhile is handled as
 		// "missed" once the pause ends.

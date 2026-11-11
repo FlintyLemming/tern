@@ -88,6 +88,7 @@ func New(d Deps) *API {
 	a.registerConnections()
 	a.registerTasks()
 	a.registerRuns()
+	a.registerSettings()
 
 	// Anything else under /api/, including a known path with the wrong method.
 	a.mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
