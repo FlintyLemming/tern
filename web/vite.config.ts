@@ -19,5 +19,7 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     css: false,
+    // page tests drive Radix widgets through jsdom; the first one in a file also pays for warm-up
+    testTimeout: 20_000,
   },
 })

@@ -19,7 +19,7 @@ export function newQueryClient() {
 // renderRoutes renders <Route> elements inside every provider the app has.
 export function renderRoutes(routes: ReactNode, path = '/', opts: { qc?: QueryClient; user?: ReturnType<typeof userEvent.setup> } = {}) {
   const qc = opts.qc ?? newQueryClient()
-  const user = opts.user ?? userEvent.setup()
+  const user = opts.user ?? userEvent.setup({ delay: null }) // no timer between keystrokes
   const utils = render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[path]}>
