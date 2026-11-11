@@ -5,6 +5,8 @@ import { ApiError, configureClient } from './api/client'
 import { forgetSession, qk } from './api/queries'
 import { ConnectionsPage } from './pages/connections/ConnectionsPage'
 import { LoginPage } from './pages/login/LoginPage'
+import { TaskEditor } from './pages/tasks/TaskEditor'
+import { TasksPage } from './pages/tasks/TasksPage'
 import { SetupPage } from './pages/setup/SetupPage'
 import { UnlockPage } from './pages/unlock/UnlockPage'
 import { AppShell } from './shell/AppShell'
@@ -46,8 +48,8 @@ function Todo({ children }: { children: ReactNode }) {
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <Toaster>
-        <BrowserRouter>
+      <BrowserRouter>
+        <Toaster>
           <ClientWiring />
           <Routes>
             <Route element={<AuthGate />}>
@@ -56,9 +58,9 @@ export function App() {
               <Route path="/unlock" element={<UnlockPage />} />
               <Route element={<AppShell />}>
                 <Route index element={<Todo>overview</Todo>} />
-                <Route path="/tasks" element={<Todo>tasks</Todo>} />
-                <Route path="/tasks/new" element={<Todo>new task</Todo>} />
-                <Route path="/tasks/:id" element={<Todo>task</Todo>} />
+                <Route path="/tasks" element={<TasksPage />} />
+                <Route path="/tasks/new" element={<TaskEditor />} />
+                <Route path="/tasks/:id" element={<TaskEditor />} />
                 <Route path="/runs" element={<Todo>runs</Todo>} />
                 <Route path="/runs/:id" element={<Todo>run</Todo>} />
                 <Route path="/connections" element={<ConnectionsPage />} />
@@ -68,8 +70,8 @@ export function App() {
               </Route>
             </Route>
           </Routes>
-        </BrowserRouter>
-      </Toaster>
+        </Toaster>
+      </BrowserRouter>
     </QueryClientProvider>
   )
 }

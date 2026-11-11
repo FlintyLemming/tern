@@ -21,11 +21,11 @@ export function renderRoutes(routes: ReactNode, path = '/', opts: { qc?: QueryCl
   const user = opts.user ?? userEvent.setup()
   const utils = render(
     <QueryClientProvider client={qc}>
-      <Toaster>
-        <MemoryRouter initialEntries={[path]}>
+      <MemoryRouter initialEntries={[path]}>
+        <Toaster>
           <Routes>{routes}</Routes>
-        </MemoryRouter>
-      </Toaster>
+        </Toaster>
+      </MemoryRouter>
     </QueryClientProvider>,
   )
   return { qc, user, ...utils }
