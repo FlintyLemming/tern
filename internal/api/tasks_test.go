@@ -90,7 +90,8 @@ func syncBody(name, connID string) map[string]any {
 func backupBody(name, connID string) map[string]any {
 	return map[string]any{
 		"type": "backup", "name": name, "enabled": true,
-		"backup": map[string]any{"connection_id": connID, "repo_path": "/srv/restic/docs", "sources": []string{"/mnt/docs"}},
+		"backup":        map[string]any{"connection_id": connID, "repo_path": "/srv/restic/docs", "sources": []string{"/mnt/docs"}},
+		"repo_password": repoPass, "recovery_confirmed": true,
 	}
 }
 
@@ -225,6 +226,7 @@ func (h *harness) update(task map[string]any, change func(map[string]any)) *http
 	for k, v := range task {
 		body[k] = v
 	}
+	delete(body, "repo_state") // only in the answer to a create
 	change(body)
 	return &httpResult{h.do("PUT", taskPath(task), body)}
 }

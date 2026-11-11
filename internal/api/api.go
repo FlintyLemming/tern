@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"tern/internal/access"
 	"tern/internal/auth"
 	"tern/internal/clock"
 	"tern/internal/config"
@@ -34,6 +35,12 @@ type Deps struct {
 	Runner    *runner.Runner
 	Registry  *engine.Registry
 	Events    *events.Hub
+
+	// What the API itself does with repositories (attach on task
+	// creation, list snapshots). Access defaults to the real opener,
+	// ResticBin to "restic".
+	Access    engine.AccessOpener
+	ResticBin string
 }
 
 // API is the HTTP handler for the whole process.
@@ -76,6 +83,9 @@ func New(d Deps) *API {
 	if d.Clock == nil {
 		d.Clock = clock.Real
 	}
+	if d.Access == nil {
+		d.Access = access.Opener{Store: d.Store, Vault: d.Vault}
+	}
 	a := &API{d: d, mux: http.NewServeMux(), closing: make(chan struct{})}
 
 	a.Handle("GET /api/v1/status", a.handleStatus)
@@ -87,6 +97,7 @@ func New(d Deps) *API {
 	a.registerKeys()
 	a.registerConnections()
 	a.registerTasks()
+	a.registerBackup()
 	a.registerRuns()
 	a.registerSettings()
 

@@ -103,33 +103,25 @@ func (a *API) writeTask(w http.ResponseWriter, r *http.Request, id string, statu
 }
 
 func (a *API) handleCreateTask(w http.ResponseWriter, r *http.Request) {
-	var t model.Task
-	if !readJSON(w, r, &t) {
+	var req createTaskRequest
+	if !readJSON(w, r, &req) {
 		return
 	}
+	t := req.Task
 	now := a.now()
 	t.ID, t.Version, t.CreatedAt, t.UpdatedAt = model.NewID(), 1, now, now
 	t.ApplyDefaults()
-	if b := t.Backup; b != nil {
-		// Defaults that only apply to a new task: afterwards 0 means "never".
-		if b.PruneEveryDays == 0 {
-			b.PruneEveryDays = 7
-		}
-		if b.CheckEveryDays == 0 {
-			b.CheckEveryDays = 30
-		}
-		if b.Host == "" {
-			// Snapshots are filed under the node name of the day the task
-			// was created; renaming the node later must not split them.
-			name, _, err := a.d.Store.GetMeta(r.Context(), metaNodeName)
-			if err != nil {
-				internalError(w, r, err)
-				return
-			}
-			b.Host = name
-		}
+	if t.Type == model.TaskBackup && t.Backup != nil {
+		a.createBackupTask(w, r, t, req)
+		return
 	}
 	fields := t.Validate()
+	if req.RepoPassword != nil {
+		fields["repo_password"] = "invalid" // only backup tasks have one
+	}
+	if req.RecoveryConfirmed != nil {
+		fields["recovery_confirmed"] = "invalid"
+	}
 	if err := a.checkTaskRefs(r, t, fields); err != nil {
 		internalError(w, r, err)
 		return
@@ -146,6 +138,9 @@ func (a *API) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	a.writeTask(w, r, t.ID, http.StatusCreated)
 }
 
+// handleUpdateTask changes everything about a task except its type, the
+// host of a backup task and the repository password: a request carrying
+// repo_password is refused like any unknown field.
 func (a *API) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 	var t model.Task
 	if !readJSON(w, r, &t) {

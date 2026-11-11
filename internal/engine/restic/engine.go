@@ -12,6 +12,7 @@ import (
 	"tern/internal/engine"
 	"tern/internal/model"
 	"tern/internal/proc"
+	"tern/internal/redact"
 	"tern/internal/store"
 	"tern/internal/vault"
 )
@@ -153,7 +154,7 @@ func (s *session) exec(ctx context.Context, env engine.Env, onStdout func([]byte
 
 // lastLine is the last thing restic said on stderr, as a one-line reason.
 // With --json a fatal error arrives as a JSON object.
-func lastLine(env engine.Env, tail string) string {
+func lastLine(red *redact.Redactor, tail string) string {
 	lines := strings.Split(strings.TrimSpace(tail), "\n")
 	line := strings.TrimSpace(lines[len(lines)-1])
 	var msg struct {
@@ -165,32 +166,37 @@ func lastLine(env engine.Env, tail string) string {
 	if len(line) > 300 {
 		line = line[:300]
 	}
-	// It ends up in the run record, which is not behind the log's redactor.
+	// It ends up in a run record or an API response, neither of which is
+	// behind the log's redactor.
 	var buf bytes.Buffer
-	w := env.Redact.Writer(&buf)
+	w := red.Writer(&buf)
 	fmt.Fprintln(w, line)
 	w.Close()
 	return strings.TrimSpace(buf.String())
 }
 
-// failure turns a non-zero exit of `restic <sub>` into an error.
-func (s *session) failure(env engine.Env, sub string, res proc.Result) error {
+// exitError turns a non-zero exit of `restic <sub>` into an error.
+func exitError(repoPath, sub string, res proc.Result, red *redact.Redactor) error {
 	kind, _ := ExitKind(res.ExitCode, res.StderrTail)
 	var msg string
 	switch res.ExitCode {
 	case exitNoRepository:
-		msg = "there is no restic repository at " + s.spec().RepoPath + " on the remote end"
+		msg = "there is no restic repository at " + repoPath + " on the remote end"
 	case exitLocked:
 		msg = "the repository is locked by another restic process"
 	case exitWrongPass:
 		msg = "wrong repository password"
 	default:
 		msg = fmt.Sprintf("restic %s failed (exit %d)", sub, res.ExitCode)
-		if reason := lastLine(env, res.StderrTail); reason != "" {
+		if reason := lastLine(red, res.StderrTail); reason != "" {
 			msg += ": " + reason
 		}
 	}
 	return &model.KindError{Kind: kind, Msg: msg}
+}
+
+func (s *session) failure(env engine.Env, sub string, res proc.Result) error {
+	return exitError(s.spec().RepoPath, sub, res, env.Redact)
 }
 
 // call runs `restic <args>` with its output in the run log and returns an

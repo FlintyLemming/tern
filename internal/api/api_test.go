@@ -20,9 +20,12 @@ import (
 	"tern/internal/config"
 	"tern/internal/engine"
 	"tern/internal/engine/fake"
+	"tern/internal/engine/restic/restictest"
 	"tern/internal/events"
 	"tern/internal/hooks"
 	"tern/internal/model"
+	"tern/internal/redact"
+	"tern/internal/rundir"
 	"tern/internal/runner"
 	"tern/internal/scheduler"
 	"tern/internal/store"
@@ -60,6 +63,30 @@ type harness struct {
 
 	enginesMu sync.Mutex
 	engines   map[string]*fake.Engine // by task name
+
+	// What the API itself does with a repository goes to a fake restic;
+	// by default every call succeeds, so a repository "exists".
+	restic *restictest.Fake
+	// check replaces the connection preflight, which passes when it is
+	// nil: the test SSH servers do not know the generated keys.
+	check func(connID string) error
+}
+
+// harnessAccess is the real access.Opener with a replaceable preflight.
+type harnessAccess struct {
+	h    *harness
+	real access.Opener
+}
+
+func (a harnessAccess) Open(ctx context.Context, connID string, dir *rundir.Dir, red *redact.Redactor) (access.Access, func(), error) {
+	return a.real.Open(ctx, connID, dir, red)
+}
+
+func (a harnessAccess) Check(ctx context.Context, connID string) error {
+	if a.h.check != nil {
+		return a.h.check(connID)
+	}
+	return nil
 }
 
 // engine returns the fake engine runs of the task called name are built
@@ -89,6 +116,18 @@ func (h *harness) advance(d time.Duration) {
 	h.sched.Sync()
 }
 
+// shortDir is a temporary directory with a path short enough for the
+// agent sockets created beneath it (t.TempDir is too long on macOS).
+func shortDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("/tmp", "tern-api")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	return dir
+}
+
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 	st, err := store.Open(context.Background(), t.TempDir())
@@ -97,7 +136,7 @@ func newHarness(t *testing.T) *harness {
 	}
 	t.Cleanup(func() { st.Close() })
 	h := &harness{t: t, st: st, secrets: t.TempDir(), now: time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC),
-		dataDir: t.TempDir(), runtimeDir: t.TempDir(), engines: map[string]*fake.Engine{}}
+		dataDir: t.TempDir(), runtimeDir: shortDir(t), engines: map[string]*fake.Engine{}, restic: restictest.New(t)}
 	t.Cleanup(func() { h.stopCore() }) // before the store closes
 	h.restart()
 	return h
@@ -143,7 +182,9 @@ func (h *harness) restart() {
 	}
 
 	h.api = New(Deps{
-		Cfg:       config.Config{SecretsDir: h.secrets, DataDir: h.dataDir},
+		Cfg:       config.Config{SecretsDir: h.secrets, DataDir: h.dataDir, RuntimeDir: h.runtimeDir},
+		Access:    harnessAccess{h: h, real: access.Opener{Store: h.st, Vault: h.vault}},
+		ResticBin: h.restic.Bin,
 		Store:     h.st,
 		Vault:     h.vault,
 		Sessions:  auth.NewSessions(h.st.DB(), now),
