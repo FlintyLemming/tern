@@ -1,0 +1,19 @@
+{
+  "status": {
+    "success": "Success",
+    "warning": "Completed with warnings",
+    "partial": "Partially failed",
+    "failed": "Failed",
+    "interrupted": "Interrupted",
+    "canceled": "Canceled",
+    "skipped": "Skipped",
+    "queued": "Queued",
+    "running": "Running",
+    "retry_wait": "Waiting to retry"
+  },
+  "common": {
+    "copy": "Copy",
+    "copied": "Copied",
+    "close": "Close"
+  }
+}

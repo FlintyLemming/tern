@@ -1,0 +1,19 @@
+{
+  "status": {
+    "success": "成功",
+    "warning": "完成但有警告",
+    "partial": "部分失败",
+    "failed": "失败",
+    "interrupted": "被中断",
+    "canceled": "已取消",
+    "skipped": "已跳过",
+    "queued": "排队中",
+    "running": "运行中",
+    "retry_wait": "等待重试"
+  },
+  "common": {
+    "copy": "复制",
+    "copied": "已复制",
+    "close": "关闭"
+  }
+}
