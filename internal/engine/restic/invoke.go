@@ -1,0 +1,57 @@
+// Package restic turns backup tasks into restic child processes: backup,
+// retention, prune and check, snapshot listing and restore.
+package restic
+
+import (
+	"fmt"
+	"path/filepath"
+
+	"tern/internal/proc"
+	"tern/internal/rundir"
+	"tern/internal/sshx"
+)
+
+const passwordFile = "repo-password"
+
+// Invocation is what every restic call of one run has in common. SSH goes
+// through the run's generated ssh_config; the repository password reaches
+// restic as a file in the tmpfs run directory, never on the command line.
+type Invocation struct {
+	Bin         string // default "restic"
+	SSHConfig   string
+	Dir         *rundir.Dir
+	DataDir     string
+	RepoPath    string
+	Connections int
+}
+
+// Cmd builds a restic call: the fixed global options first, then args.
+func (iv Invocation) Cmd(args ...string) proc.Cmd {
+	bin := iv.Bin
+	if bin == "" {
+		bin = "restic"
+	}
+	global := []string{
+		"-r", "sftp:" + sshx.Alias + ":" + iv.RepoPath,
+		"-o", fmt.Sprintf(`sftp.command=ssh -F "%s" %s -s sftp`, iv.SSHConfig, sshx.Alias),
+		"-o", fmt.Sprintf("sftp.connections=%d", iv.Connections),
+	}
+	return proc.Cmd{
+		Path: bin,
+		Args: append(global, args...),
+		Env: []string{
+			"RESTIC_PASSWORD_FILE=" + filepath.Join(iv.Dir.Path, passwordFile),
+			// On the data volume: without the cache every run downloads the
+			// index again, which is slow on a weak link.
+			"RESTIC_CACHE_DIR=" + filepath.Join(iv.DataDir, "restic-cache"),
+			"RESTIC_PROGRESS_FPS=1",
+		},
+	}
+}
+
+// WritePassword puts the repository password where Cmd points restic to,
+// byte for byte. It is written once per run directory.
+func (iv Invocation) WritePassword(pw []byte) error {
+	_, err := iv.Dir.WriteSecret(passwordFile, pw)
+	return err
+}
