@@ -1,0 +1,23 @@
+*deleting   -old 旧.txt
+>f+++++++++ -dash.txt
+>f+++++++++ new\#012line.txt
+>f+++++++++ plain.txt
+>f+++++++++ 名 字.txt
+
+Number of files: 5 (reg: 4, dir: 1)
+Number of created files: 4 (reg: 4)
+Number of deleted files: 1 (reg: 1)
+Number of regular files transferred: 4
+Total file size: 4 bytes
+Total transferred file size: 4 bytes
+Literal data: 0 bytes
+Number of 4 KiB logical blocks touched: 0
+Matched data: 0 bytes
+File list size: 0
+File list generation time: 0.001 seconds
+File list transfer time: 0.000 seconds
+Total bytes sent: 147
+Total bytes received: 47
+
+sent 147 bytes  received 47 bytes  388.00 bytes/sec
+total size is 4  speedup is 0.02 (DRY RUN)

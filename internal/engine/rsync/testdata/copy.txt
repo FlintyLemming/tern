@@ -1,0 +1,23 @@
+>f+++++++++ a.txt
+              5B  41%       0B/s    0:00:00                5B  41%       0B/s    0:00:00 (xfr#1, to-chk=2/4)
+cd+++++++++ sub/
+>f+++++++++ sub/b.txt
+             12B 100%   7.00KB/s    0:00:00 (xfr#2, to-chk=0/4)             12B 100%   7.00KB/s    0:00:00 (xfr#2, to-chk=0/4)             12B 100%   7.00KB/s    0:00:00 (xfr#2, to-chk=0/4)             12B 100%   7.00KB/s    0:00:00 (xfr#2, to-chk=0/4)
+
+Number of files: 4 (reg: 2, dir: 2)
+Number of created files: 3 (reg: 2, dir: 1)
+Number of deleted files: 0
+Number of regular files transferred: 2
+Total file size: 12 bytes
+Total transferred file size: 12 bytes
+Literal data: 12 bytes
+Number of 4 KiB logical blocks touched: 2
+Matched data: 0 bytes
+File list size: 0
+File list generation time: 0.001 seconds
+File list transfer time: 0.000 seconds
+Total bytes sent: 202
+Total bytes received: 53
+
+sent 202 bytes  received 53 bytes  510.00 bytes/sec
+total size is 12  speedup is 0.05
