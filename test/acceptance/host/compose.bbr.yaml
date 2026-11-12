@@ -1,0 +1,6 @@
+# Adds deploy/compose.yaml's BBR line to the acceptance stack. On a kernel
+# without tcp_bbr the tern container cannot start with it (spec §13).
+services:
+  tern:
+    sysctls:
+      net.ipv4.tcp_congestion_control: bbr

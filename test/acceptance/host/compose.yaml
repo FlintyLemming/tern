@@ -1,0 +1,64 @@
+# The stack the host acceptance tests (and the end-to-end tests) drive: the
+# image under test, an SSH server and a WebDAV server as the remote end.
+# Every directory is bound to one the test made on the host, so tests look
+# at files there and never need to enter the tern container.
+#
+# The harness sets every TERN_ACC_* variable; TERN_VERSION picks the image
+# (`make image VERSION=acceptance` builds tern:acceptance). BBR is switched
+# on by adding compose.bbr.yaml: most test machines' kernels lack tcp_bbr.
+services:
+  tern:
+    image: tern:${TERN_VERSION:-acceptance}
+    init: true
+    stop_grace_period: 2m
+    ports:
+      - "127.0.0.1::8080"
+    environment:
+      TZ: UTC
+    volumes:
+      - ${TERN_ACC_DATA:?}:/data
+      - ${TERN_ACC_SECRETS:?}:/secrets
+      - ${TERN_ACC_SOURCES:?}:/sources:ro
+      - ${TERN_ACC_TARGETS:?}:/targets
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, DAC_READ_SEARCH, FOWNER, SETUID, SETGID]
+    depends_on:
+      sshd:
+        condition: service_healthy
+      webdav:
+        condition: service_healthy
+
+  sshd:
+    image: tern-acceptance-sshd
+    build:
+      context: ../../integration/sshd
+      args:
+        BASE_REGISTRY: ${TERN_BASE_REGISTRY:-docker.io/library}
+    volumes:
+      - ${TERN_ACC_KEYS:?}:/keys
+      - ${TERN_ACC_REMOTE:?}:/srv
+      # A host key made by the harness, so a test can know its fingerprint
+      # without asking the container. Clients prefer ed25519.
+      - ${TERN_ACC_HOSTKEY:?}:/etc/ssh/ssh_host_ed25519_key:ro
+      - ${TERN_ACC_HOSTKEY:?}.pub:/etc/ssh/ssh_host_ed25519_key.pub:ro
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "22"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+
+  # rclone from the image under test serves the remote directory's dav/.
+  webdav:
+    image: tern:${TERN_VERSION:-acceptance}
+    entrypoint: ["sh", "-c", "mkdir -p /srv/dav && exec rclone serve webdav /srv/dav --addr :8081 --user dav --pass \"$$DAV_PASS\" --dir-cache-time 0s --poll-interval 0"]
+    environment:
+      DAV_PASS: ${TERN_ACC_DAV_PASS:?}
+    volumes:
+      - ${TERN_ACC_REMOTE:?}:/srv
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "8081"]
+      interval: 1s
+      timeout: 2s
+      retries: 30

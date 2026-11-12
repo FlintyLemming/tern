@@ -8,7 +8,7 @@ GOPROXY_IMAGE ?= $(or $(TERN_GOPROXY),https://proxy.golang.org$(comma)direct)
 comma := ,
 PLATFORMS ?= linux/amd64,linux/arm64
 
-.PHONY: test vet web build itest acceptance image image-test
+.PHONY: test vet web build itest acceptance acceptance-host image image-test
 
 test:
 	go test ./...
@@ -49,4 +49,9 @@ image:
 image-test:
 	$(MAKE) image VERSION=image-test
 	TERN_IMAGE=tern:image-test go test -tags image -count=1 -timeout 30m ./test/image/...
+
+# Acceptance tests that drive the real image from this machine: secret leak
+# scan, restarts, hooks. Build the image first: make image VERSION=acceptance
+acceptance-host:
+	go test -tags acceptance_host -count=1 -timeout 30m ./test/acceptance/host/...
 
