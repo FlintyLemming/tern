@@ -8,7 +8,7 @@ GOPROXY_IMAGE ?= $(or $(TERN_GOPROXY),https://proxy.golang.org$(comma)direct)
 comma := ,
 PLATFORMS ?= linux/amd64,linux/arm64
 
-.PHONY: test vet web build itest acceptance acceptance-host image image-test
+.PHONY: test vet web build itest acceptance acceptance-host e2e image image-test
 
 test:
 	go test ./...
@@ -55,3 +55,11 @@ image-test:
 acceptance-host:
 	go test -tags acceptance_host -count=1 -timeout 30m ./test/acceptance/host/...
 
+# End-to-end: a browser walks from the setup wizard to a restore against the
+# real image. Build the image first: make image VERSION=acceptance
+# TERN_E2E_CHANNEL=chrome drives the installed Chrome instead of
+# downloading Playwright's Chromium.
+e2e:
+	npm --prefix test/e2e ci
+	$(if $(TERN_E2E_CHANNEL),,npx --prefix test/e2e playwright install chromium)
+	cd test/e2e && npx playwright test

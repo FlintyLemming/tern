@@ -3,7 +3,10 @@ module tern
 go 1.26.0
 
 // npm packages, not Go code.
-ignore ./web/node_modules
+ignore (
+	./test/e2e/node_modules
+	./web/node_modules
+)
 
 require (
 	github.com/robfig/cron/v3 v3.0.1
