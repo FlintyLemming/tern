@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"tern/internal/engine"
 	"tern/internal/engine/filter"
@@ -14,6 +15,7 @@ import (
 	"tern/internal/model"
 	"tern/internal/proc"
 	"tern/internal/redact"
+	"tern/internal/sshx"
 )
 
 const excludeFile = "rsync-excludes"
@@ -22,6 +24,7 @@ const excludeFile = "rsync-excludes"
 type Deps struct {
 	Access engine.AccessOpener
 	Bin    string // default "rsync"
+	SSHBin string // default "ssh"; stops the remote end of a dead transfer
 }
 
 type planner struct {
@@ -37,6 +40,9 @@ type planner struct {
 	// dirDeletes is what the latest dry run of each pair would delete in
 	// directories: rsync counts those against --max-delete too.
 	dirDeletes map[model.FolderPair]int
+	// remotePID is the remote rsync of each pair's latest transfer that
+	// did not end normally: it may still be running.
+	remotePID map[model.FolderPair]string
 }
 
 // NewPlanner returns the planner for an rsync sync task. conn is only
@@ -45,7 +51,10 @@ func NewPlanner(t model.Task, conn model.Connection, d Deps) synccore.Planner {
 	if d.Bin == "" {
 		d.Bin = "rsync"
 	}
-	return &planner{d: d, spec: *t.Sync, conn: conn, dirDeletes: map[model.FolderPair]int{}}
+	if d.SSHBin == "" {
+		d.SSHBin = "ssh"
+	}
+	return &planner{d: d, spec: *t.Sync, conn: conn, dirDeletes: map[model.FolderPair]int{}, remotePID: map[model.FolderPair]string{}}
 }
 
 func (p *planner) Prepare(ctx context.Context, env engine.Env) error {
@@ -81,8 +90,9 @@ func (p *planner) Close() error {
 }
 
 // exec runs one rsync call. stdout lines go through onStdout, which
-// returns what to write to the run log; stderr goes to the log as is.
-func (p *planner) exec(ctx context.Context, env engine.Env, args []string, onStdout func([]byte) string) (proc.Result, error) {
+// returns what to write to the run log; stderr goes to the log as is,
+// except the remote end's PID line, which goes to onPID when that is set.
+func (p *planner) exec(ctx context.Context, env engine.Env, args []string, onStdout func([]byte) string, onPID func(string)) (proc.Result, error) {
 	fmt.Fprintf(env.Log, "$ rsync %s\n", strings.Join(args, " "))
 	res, err := proc.Run(ctx, proc.Cmd{
 		Path: p.d.Bin,
@@ -92,7 +102,15 @@ func (p *planner) exec(ctx context.Context, env engine.Env, args []string, onStd
 				fmt.Fprintln(env.Log, text)
 			}
 		},
-		OnStderr: func(line []byte) { fmt.Fprintf(env.Log, "%s\n", line) },
+		OnStderr: func(line []byte) {
+			if pid, ok := strings.CutPrefix(string(line), pidPrefix); ok && pidRE.MatchString(pid) {
+				if onPID != nil {
+					onPID(pid)
+				}
+				return
+			}
+			fmt.Fprintf(env.Log, "%s\n", line)
+		},
 	})
 	if err != nil {
 		return res, &model.KindError{Kind: model.KindConfig, Msg: "cannot start rsync", Err: err}
@@ -140,6 +158,8 @@ func failure(env engine.Env, what string, res proc.Result, kind model.ErrKind) e
 // A --list-only line: mode, size, date, time, name.
 var listRE = regexp.MustCompile(`^\S+\s+[0-9,]+\s+\S+\s+\S+\s(.*)$`)
 
+var pidRE = regexp.MustCompile(`^[0-9]{1,10}$`)
+
 func (p *planner) RemoteState(ctx context.Context, env engine.Env, fp model.FolderPair) (synccore.SourceState, error) {
 	args := []string{"-s", "--list-only", "--timeout=60", "-e", shell(p.sshConfig), remote(fp.Remote)}
 	entries := 0
@@ -148,7 +168,7 @@ func (p *planner) RemoteState(ctx context.Context, env engine.Env, fp model.Fold
 			entries++
 		}
 		return "" // a listing is no news for the log
-	})
+	}, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -170,7 +190,7 @@ func (p *planner) RemoteState(ctx context.Context, env engine.Env, fp model.Fold
 func (p *planner) Plan(ctx context.Context, env engine.Env, fp model.FolderPair) (synccore.Plan, error) {
 	parser := NewParser(nil)
 	parser.quiet = true
-	res, err := p.exec(ctx, env, Args(p.spec, fp, p.sshConfig, p.excludes, true, -1), parser.Line)
+	res, err := p.exec(ctx, env, Args(p.spec, fp, p.sshConfig, p.excludes, true, -1), parser.Line, nil)
 	if err != nil {
 		return synccore.Plan{}, err
 	}
@@ -189,14 +209,22 @@ func (p *planner) Transfer(ctx context.Context, env engine.Env, fp model.FolderP
 		maxDelete += p.dirDeletes[fp]
 		p.mu.Unlock()
 	}
+	p.stopStale(ctx, env, fp)
 	parser := NewParser(env.Progress)
-	res, err := p.exec(ctx, env, Args(p.spec, fp, p.sshConfig, p.excludes, false, maxDelete), parser.Line)
+	var remotePID string
+	res, err := p.exec(ctx, env, Args(p.spec, fp, p.sshConfig, p.excludes, false, maxDelete), parser.Line,
+		func(pid string) { remotePID = pid })
 	out := model.UnitResult{}
 	out.Bytes, out.Files = parser.Totals()
+	kind, warning := ExitKind(res.ExitCode, res.StderrTail)
+	if remotePID != "" && (err != nil || kind != "") {
+		p.mu.Lock()
+		p.remotePID[fp] = remotePID // it may outlive this transfer
+		p.mu.Unlock()
+	}
 	if err != nil {
 		return out, err
 	}
-	kind, warning := ExitKind(res.ExitCode, res.StderrTail)
 	if kind != "" {
 		return out, failure(env, "", res, kind)
 	}
@@ -235,4 +263,57 @@ func (p *planner) Describe(fp model.FolderPair) string {
 		src, dst = dst, src
 	}
 	return strings.Join(append(parts, src, dst), " ")
+}
+
+// stopStale stops the remote rsync of the pair's previous transfer if that
+// did not end normally. After a dead link it can run on for minutes, still
+// holding the file it was receiving; on SIGTERM it moves that file to the
+// partial directory, where this transfer picks it up. Best effort: when it
+// cannot be done the transfer runs anyway.
+func (p *planner) stopStale(ctx context.Context, env engine.Env, fp model.FolderPair) {
+	p.mu.Lock()
+	pid, ok := p.remotePID[fp]
+	delete(p.remotePID, fp)
+	p.mu.Unlock()
+	if !ok {
+		return
+	}
+	fmt.Fprintf(env.Log, "stopping the remote rsync of the previous attempt (pid %s) if it still runs\n", pid)
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	res, err := proc.Run(ctx, proc.Cmd{
+		Path:     p.d.SSHBin,
+		Args:     []string{"-F", p.sshConfig, sshx.Alias, "sh", "-s"},
+		Stdin:    strings.NewReader(stopScript(pid)),
+		OnStderr: func(line []byte) { fmt.Fprintf(env.Log, "%s\n", line) },
+	})
+	if err != nil || res.ExitCode != 0 {
+		fmt.Fprintf(env.Log, "could not stop it (exit %d, %v); going on\n", res.ExitCode, err)
+	}
+}
+
+// stopScript runs in the remote shell. It signals pid and its children
+// only while pid still is an rsync server (the number may have been
+// reused), waits up to 20 seconds for them to exit, then kills them.
+func stopScript(pid string) string {
+	return "pid=" + pid + `
+cmd=$(tr '\000' ' ' < /proc/$pid/cmdline 2>/dev/null) || exit 0
+case "$cmd" in *rsync*--server*) ;; *) exit 0 ;; esac
+kids=
+for s in /proc/[0-9]*/stat; do
+	set -- $(cat "$s" 2>/dev/null)
+	[ "$4" = "$pid" ] && kids="$kids $1"
+done
+kill -TERM $pid $kids 2>/dev/null
+i=0
+while [ $i -lt 20 ]; do
+	alive=
+	for p in $pid $kids; do kill -0 $p 2>/dev/null && alive=1; done
+	[ -z "$alive" ] && exit 0
+	sleep 1
+	i=$((i+1))
+done
+kill -KILL $pid $kids 2>/dev/null
+exit 0
+`
 }

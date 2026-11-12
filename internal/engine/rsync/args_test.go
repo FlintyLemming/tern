@@ -25,7 +25,8 @@ func TestArgsPushMirror(t *testing.T) {
 	s.Excludes = []string{"*.tmp"}
 	got := Args(s, pairA, cfg, "F", false, 7)
 	want := []string{"-aHs", "--no-inc-recursive", "--partial-dir=.tern-partial", "--timeout=60", "--info=progress2", "--stats",
-		"--out-format=%i %n%L", "-e", sshArg, "--delete", "--max-delete=7", "--bwlimit=2048", "--exclude-from=F",
+		"--out-format=%i %n%L", "-e", sshArg, `--rsync-path=sh -c 'echo tern-pid:$$ >&2; exec rsync "$@"' rsync`,
+		"--delete", "--max-delete=7", "--bwlimit=2048", "--exclude-from=F",
 		"/sources/a/", "tern-target:/srv/a/"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Args =\n%q\nwant\n%q", got, want)

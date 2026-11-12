@@ -8,7 +8,7 @@ GOPROXY_IMAGE ?= $(or $(TERN_GOPROXY),https://proxy.golang.org$(comma)direct)
 comma := ,
 PLATFORMS ?= linux/amd64,linux/arm64
 
-.PHONY: test vet web build itest image image-test
+.PHONY: test vet web build itest acceptance image image-test
 
 test:
 	go test ./...
@@ -30,6 +30,12 @@ itest:
 	docker compose -f test/integration/compose.yaml run --rm --build runner \
 	  go test -tags integration -count=1 ./internal/... ./test/integration/...
 
+# Acceptance tests on a bad network (packet loss, outages), in the same
+# compose environment. They take about an hour.
+acceptance:
+	docker compose -f test/integration/compose.yaml run --rm --build runner \
+	  go test -tags acceptance -count=1 -timeout 60m ./test/acceptance/...
+
 # The production image for both architectures, loaded locally as tern:$(VERSION).
 # Nothing is pushed anywhere.
 image:
@@ -43,3 +49,4 @@ image:
 image-test:
 	$(MAKE) image VERSION=image-test
 	TERN_IMAGE=tern:image-test go test -tags image -count=1 -timeout 30m ./test/image/...
+

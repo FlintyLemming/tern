@@ -9,7 +9,7 @@ import (
 )
 
 var fixedArgs = []string{"--config", "/run/x/rclone.conf", "--use-json-log", "--log-level", "INFO", "--stats", "2s",
-	"--timeout", "60s", "--contimeout", "15s", "--retries", "3", "--low-level-retries", "10", "--skip-links", "--create-empty-src-dirs"}
+	"--timeout", "60s", "--contimeout", "15s", "--retries", "1", "--low-level-retries", "3", "--skip-links", "--create-empty-src-dirs"}
 
 func spec(direction, mode string) model.SyncSpec {
 	return model.SyncSpec{Protocol: "sftp", ConnectionID: "c1", Direction: direction, DeleteMode: mode,

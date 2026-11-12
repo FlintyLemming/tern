@@ -71,6 +71,7 @@ services:
       webdav:
         condition: service_healthy
     working_dir: /src
+    cap_add: [NET_ADMIN] # packet loss and outages for the acceptance tests (tc netem)
     environment:
       TERN_ITEST_SSH_HOST: sshd
       TERN_ITEST_SSH_USER: backup

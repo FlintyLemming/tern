@@ -23,6 +23,7 @@ import (
 
 	"tern/internal/model"
 	"tern/internal/sshx"
+	kit "tern/test/testkit"
 )
 
 func TestToolVersions(t *testing.T) {
@@ -40,8 +41,8 @@ func TestToolVersions(t *testing.T) {
 }
 
 func TestRealSSHWithAgent(t *testing.T) {
-	cfg := openSSH(t, authorize(t), target(t))
-	stdout, stderr, code := runSSH(t, cfg, "echo", "ok")
+	cfg := kit.OpenSSH(t, kit.Authorize(t), kit.Target(t))
+	stdout, stderr, code := kit.RunSSH(t, cfg, "echo", "ok")
 	if code != 0 || stdout != "ok\n" {
 		t.Fatalf("exit %d, stdout %q, stderr %q", code, stdout, stderr)
 	}
@@ -62,31 +63,31 @@ func TestRealSSHWithRSAKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	appendAuthorized(t, p)
-	stdout, stderr, code := runSSH(t, openSSH(t, p, target(t)), "echo", "ok")
+	kit.AppendAuthorized(t, p)
+	stdout, stderr, code := kit.RunSSH(t, kit.OpenSSH(t, p, kit.Target(t)), "echo", "ok")
 	if code != 0 || stdout != "ok\n" {
 		t.Fatalf("exit %d, stdout %q, stderr %q", code, stdout, stderr)
 	}
 }
 
 func TestRealSSHWrongHostKey(t *testing.T) {
-	tg := target(t)
-	tg.HostKey = newKey(t).Authorized
-	_, stderr, code := runSSH(t, openSSH(t, authorize(t), tg), "echo", "ok")
+	tg := kit.Target(t)
+	tg.HostKey = kit.NewKey(t).Authorized
+	_, stderr, code := kit.RunSSH(t, kit.OpenSSH(t, kit.Authorize(t), tg), "echo", "ok")
 	if code != 255 || !strings.Contains(stderr, "Host key verification failed") {
 		t.Fatalf("exit %d, stderr %q", code, stderr)
 	}
 }
 
 func TestRealSSHUnauthorizedKey(t *testing.T) {
-	_, stderr, code := runSSH(t, openSSH(t, newKey(t), target(t)), "echo", "ok")
+	_, stderr, code := kit.RunSSH(t, kit.OpenSSH(t, kit.NewKey(t), kit.Target(t)), "echo", "ok")
 	if code != 255 || !strings.Contains(stderr, "Permission denied") {
 		t.Fatalf("exit %d, stderr %q", code, stderr)
 	}
 }
 
 func TestRealSSHNoKeyMaterial(t *testing.T) {
-	cfg := openSSH(t, authorize(t), target(t))
+	cfg := kit.OpenSSH(t, kit.Authorize(t), kit.Target(t))
 	dir := filepath.Dir(cfg)
 	var stdout, stderr bytes.Buffer
 	cmd := exec.Command("ssh", "-F", cfg, sshx.Alias, "echo started; sleep 2")
@@ -142,16 +143,16 @@ func TestRealSSHNoKeyMaterial(t *testing.T) {
 
 func TestRealCheck(t *testing.T) {
 	ctx := context.Background()
-	p, tg := authorize(t), target(t)
+	p, tg := kit.Authorize(t), kit.Target(t)
 	if err := sshx.Check(ctx, tg, p.Signer); err != nil {
 		t.Errorf("authorized key, right host key: %v", err)
 	}
 	wrong := tg
-	wrong.HostKey = newKey(t).Authorized
+	wrong.HostKey = kit.NewKey(t).Authorized
 	if err := sshx.Check(ctx, wrong, p.Signer); model.KindOf(err) != model.KindHostKey {
 		t.Errorf("wrong host key: err = %v, want kind host_key", err)
 	}
-	if err := sshx.Check(ctx, tg, newKey(t).Signer); model.KindOf(err) != model.KindAuth {
+	if err := sshx.Check(ctx, tg, kit.NewKey(t).Signer); model.KindOf(err) != model.KindAuth {
 		t.Errorf("unauthorized key: err = %v, want kind auth", err)
 	}
 }
@@ -170,29 +171,29 @@ func TestRealSSHIPv6(t *testing.T) {
 	if v6 == "" {
 		t.Fatalf("sshd has no IPv6 address (%v); the compose network must enable IPv6", ips)
 	}
-	tg := target(t)
+	tg := kit.Target(t)
 	tg.Host = v6
 	hk, err := sshx.ProbeHostKey(context.Background(), v6, tg.Port)
 	if err != nil || hk.Authorized != tg.HostKey {
 		t.Fatalf("probe over IPv6: %v (same key: %v)", err, hk.Authorized == tg.HostKey)
 	}
-	p := authorize(t)
+	p := kit.Authorize(t)
 	if err := sshx.Check(context.Background(), tg, p.Signer); err != nil {
 		t.Errorf("Check over IPv6: %v", err)
 	}
-	stdout, stderr, code := runSSH(t, openSSH(t, p, tg), "echo", "ok")
+	stdout, stderr, code := kit.RunSSH(t, kit.OpenSSH(t, p, tg), "echo", "ok")
 	if code != 0 || stdout != "ok\n" {
 		t.Fatalf("ssh to %s: exit %d, stdout %q, stderr %q", v6, code, stdout, stderr)
 	}
 }
 
 func TestRemotePathIsFreshAndWritable(t *testing.T) {
-	a, b := remotePath(t), remotePath(t)
+	a, b := kit.RemotePath(t), kit.RemotePath(t)
 	if a == b || !strings.HasPrefix(a, "/srv/") {
 		t.Fatalf("remotePath = %q, %q", a, b)
 	}
-	cfg := openSSH(t, authorize(t), target(t))
-	if _, stderr, code := runSSH(t, cfg, "touch", a+"/probe", "&&", "test", "-z", `"$(ls `+b+`)"`); code != 0 {
+	cfg := kit.OpenSSH(t, kit.Authorize(t), kit.Target(t))
+	if _, stderr, code := kit.RunSSH(t, cfg, "touch", a+"/probe", "&&", "test", "-z", `"$(ls `+b+`)"`); code != 0 {
 		t.Errorf("exit %d, stderr %q", code, stderr)
 	}
 }

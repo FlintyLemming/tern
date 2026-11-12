@@ -10,9 +10,15 @@ import (
 )
 
 // fixed are the options of every rclone sync call, in this order.
+// rclone keeps its operation-level retries (--low-level-retries, spec §8.3)
+// but does not start the whole sync over itself (--retries 1): that is the
+// task-level retry's job, with its delays, its retry_wait state and only
+// the failed folder pairs. Three operation retries, each a new ssh with a
+// 15 s connect timeout, let rclone give up within about two minutes of an
+// outage (the SSH keepalive notices it after about one).
 func fixed(conf string) []string {
 	return []string{"--config", conf, "--use-json-log", "--log-level", "INFO", "--stats", "2s",
-		"--timeout", "60s", "--contimeout", "15s", "--retries", "3", "--low-level-retries", "10",
+		"--timeout", "60s", "--contimeout", "15s", "--retries", "1", "--low-level-retries", "3",
 		"--skip-links", "--create-empty-src-dirs"}
 }
 

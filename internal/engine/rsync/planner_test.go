@@ -4,11 +4,15 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
+	"time"
 
 	"tern/internal/access"
 	"tern/internal/engine"
@@ -38,6 +42,7 @@ type plannerFixture struct {
 	t    *testing.T
 	acc  *fakeAccess
 	tool *faketool.Fake
+	ssh  *faketool.Fake // stops the remote end of a dead attempt
 	log  *bytes.Buffer
 	env  engine.Env
 	pl   synccore.Planner
@@ -49,11 +54,11 @@ func newPlanner(t *testing.T, s model.SyncSpec, steps ...faketool.Step) *planner
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &plannerFixture{t: t, acc: &fakeAccess{}, tool: faketool.New(t, "rsync", steps...), log: &bytes.Buffer{}}
+	f := &plannerFixture{t: t, acc: &fakeAccess{}, tool: faketool.New(t, "rsync", steps...), ssh: faketool.New(t, "ssh"), log: &bytes.Buffer{}}
 	f.env = engine.Env{Dir: dir, Log: f.log, Redact: redact.New()}
 	task := model.Task{ID: "t1", Type: model.TaskSync, Name: "photos", Sync: &s}
 	f.pl = NewPlanner(task, model.Connection{ID: "c1", Type: model.ConnSSH, Host: "nas2.example", Port: 22, Username: "backup"},
-		Deps{Access: f.acc, Bin: f.tool.Bin})
+		Deps{Access: f.acc, Bin: f.tool.Bin, SSHBin: f.ssh.Bin})
 	t.Cleanup(func() { f.pl.Close() })
 	return f
 }
@@ -208,5 +213,101 @@ func TestCloseClosesAccess(t *testing.T) {
 	f.pl.Close()
 	if f.acc.releases != 1 {
 		t.Errorf("released %d times", f.acc.releases)
+	}
+}
+
+// A transfer cut off by a dead link leaves its remote receiver running
+// until TCP gives up, holding the half-sent file. The next transfer of the
+// pair first stops that receiver (it saves its partial file when it gets
+// SIGTERM), so rsync can resume instead of starting the file over.
+func TestRetryStopsStaleRemoteReceiver(t *testing.T) {
+	f := newPlanner(t, spec("push", "keep"),
+		faketool.Step{Exit: 30, Stderr: "tern-pid:4242\n[sender] io timeout after 60 seconds -- exiting\n"},
+		faketool.Step{Stderr: "tern-pid:4343\n"},
+		faketool.Step{Stderr: "tern-pid:4444\n"})
+	f.prepare()
+	ctx := context.Background()
+	if _, err := f.pl.Transfer(ctx, f.env, pairA, -1); model.KindOf(err) != model.KindNetwork {
+		t.Fatalf("first Transfer = %v", err)
+	}
+	if n := len(f.ssh.Calls()); n != 0 {
+		t.Fatalf("ssh called %d times before any retry", n)
+	}
+	if strings.Contains(f.log.String(), "tern-pid:4242") {
+		t.Errorf("the PID line went to the run log:\n%s", f.log.String())
+	}
+
+	if _, err := f.pl.Transfer(ctx, f.env, pairA, -1); err != nil {
+		t.Fatalf("second Transfer = %v", err)
+	}
+	calls := f.ssh.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("ssh called %d times, want once before the retry", len(calls))
+	}
+	c := calls[0]
+	if !c.Has("-F", filepath.Join(f.env.Dir.Path, "ssh_config"), "tern-target", "sh", "-s") || !strings.Contains(c.Stdin, "pid=4242\n") {
+		t.Errorf("ssh args = %q, script:\n%s", c.Args, c.Stdin)
+	}
+	if !strings.Contains(f.log.String(), "4242") {
+		t.Errorf("the run log does not say what was stopped:\n%s", f.log.String())
+	}
+
+	// The second transfer ended normally: nothing to stop before the third.
+	if _, err := f.pl.Transfer(ctx, f.env, pairA, -1); err != nil {
+		t.Fatalf("third Transfer = %v", err)
+	}
+	if n := len(f.ssh.Calls()); n != 1 {
+		t.Errorf("ssh called %d times, want still once", n)
+	}
+}
+
+// The stop script runs in the remote shell: it only signals a process
+// that still is an rsync server, its children too, and waits for them.
+func TestStopScript(t *testing.T) {
+	s := stopScript("4242")
+	for _, want := range []string{"pid=4242", "/proc/$pid/cmdline", "*rsync*--server*", "kill -TERM", "kill -0", "kill -KILL"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("stop script lacks %q:\n%s", want, s)
+		}
+	}
+}
+
+func TestStopScriptRuns(t *testing.T) {
+	if _, err := os.Stat("/proc/self/cmdline"); err != nil {
+		t.Skip("needs /proc")
+	}
+	// A process that is not an rsync server is left alone.
+	cmd := exec.Command("sleep", "30")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer cmd.Process.Kill()
+	if out, err := exec.Command("sh", "-c", stopScript(strconv.Itoa(cmd.Process.Pid))).CombinedOutput(); err != nil {
+		t.Fatalf("stop script: %v\n%s", err, out)
+	}
+	if err := cmd.Process.Signal(syscall.Signal(0)); err != nil {
+		t.Errorf("the script stopped a process that is not rsync: %v", err)
+	}
+
+	// One that is, with a child, is stopped, child and all.
+	fake := filepath.Join(t.TempDir(), "rsync")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\nsleep 30 &\nwait\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	server := exec.Command(fake, "--server", "-s", ".")
+	if err := server.Start(); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- server.Wait() }()
+	time.Sleep(200 * time.Millisecond) // let it start its child
+	if out, err := exec.Command("sh", "-c", stopScript(strconv.Itoa(server.Process.Pid))).CombinedOutput(); err != nil {
+		t.Fatalf("stop script: %v\n%s", err, out)
+	}
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		server.Process.Kill()
+		t.Fatal("the rsync server is still running after the stop script")
 	}
 }

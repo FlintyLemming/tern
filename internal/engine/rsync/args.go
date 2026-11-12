@@ -22,13 +22,21 @@ func remote(path string) string { return sshx.Alias + ":" + dir(path) }
 // shell is rsync's -e value: ssh with the run's generated config.
 func shell(sshConfig string) string { return fmt.Sprintf(`ssh -F "%s"`, sshConfig) }
 
+// rsyncPath starts the remote rsync through sh, which first reports its
+// PID on stderr (pidPrefix) and then becomes rsync. When a link dies the
+// remote end keeps running until TCP gives up, holding the file it was
+// receiving; knowing the PID lets the next attempt stop it first.
+const rsyncPath = `sh -c 'echo tern-pid:$$ >&2; exec rsync "$@"' rsync`
+
+const pidPrefix = "tern-pid:"
+
 // Args is the rsync call that syncs one folder pair. A mirror always gets
 // --delete (a dry run has to list the deletions); maxDelete >= 0 adds the
 // limit. excludeFile is "" when the task has no exclude rules.
 func Args(spec model.SyncSpec, p model.FolderPair, sshConfig, excludeFile string, dryRun bool, maxDelete int) []string {
 	// -s keeps the remote shell from splitting or expanding the remote path.
 	args := []string{"-aHs", "--no-inc-recursive", "--partial-dir=.tern-partial", "--timeout=60", "--info=progress2", "--stats",
-		"--out-format=%i %n%L", "-e", shell(sshConfig)}
+		"--out-format=%i %n%L", "-e", shell(sshConfig), "--rsync-path=" + rsyncPath}
 	if spec.DeleteMode == "mirror" {
 		args = append(args, "--delete")
 		if maxDelete >= 0 {

@@ -15,6 +15,7 @@ import (
 	"tern/internal/sshx"
 	"tern/internal/store"
 	"tern/internal/vault"
+	kit "tern/test/testkit"
 )
 
 // storedSSH puts a key the remote end accepts and a connection to it into a
@@ -38,8 +39,8 @@ func storedSSH(t *testing.T) (access.Opener, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	appendAuthorized(t, p)
-	tg := target(t)
+	kit.AppendAuthorized(t, p)
+	tg := kit.Target(t)
 	now := time.Now().UTC().Truncate(time.Second)
 	keyID, connID := model.NewID(), model.NewID()
 	sealed, err := v.Seal("ssh_keys/"+keyID+"/private", privPEM)
@@ -59,7 +60,7 @@ func storedSSH(t *testing.T) (access.Opener, string) {
 }
 
 func TestRemoteHookRealSSH(t *testing.T) {
-	dir := remotePath(t)
+	dir := kit.RemotePath(t)
 	opener, connID := storedSSH(t)
 	runtime, err := os.MkdirTemp("/dev/shm", "th")
 	if err != nil {
@@ -75,7 +76,7 @@ func TestRemoteHookRealSSH(t *testing.T) {
 	if err := r.Run(context.Background(), h, v, &log); err != nil {
 		t.Fatalf("hook: %v\n%s", err, log.String())
 	}
-	got, stderr, code := runSSH(t, openSSH(t, authorize(t), target(t)), "cat", dir+"/hook.txt")
+	got, stderr, code := kit.RunSSH(t, kit.OpenSSH(t, kit.Authorize(t), kit.Target(t)), "cat", dir+"/hook.txt")
 	if code != 0 || got != name {
 		t.Errorf("remote file = %q (exit %d, %s), want %q", got, code, stderr, name)
 	}
