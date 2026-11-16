@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -57,6 +58,9 @@ func TestComposeMatchesSpec(t *testing.T) {
 			t.Errorf("%s: got %v", what, got)
 		}
 	}
+	// The image comes from GHCR, where .github/workflows/image.yml pushes
+	// every version tag; TERN_VERSION only picks the tag.
+	check("image", strings.HasPrefix(s.Image, "ghcr.io/flintylemming/tern:"), s.Image)
 	check("init", s.Init, s.Init)
 	check("restart", s.Restart == "unless-stopped", s.Restart)
 	check("stop_grace_period", s.StopGracePeriod == "2m0s", s.StopGracePeriod)

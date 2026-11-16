@@ -1,6 +1,6 @@
 services:
   tern:
-    image: tern:${TERN_VERSION:-latest}
+    image: ghcr.io/flintylemming/tern:${TERN_VERSION:-latest}
     restart: unless-stopped
     init: true
     stop_grace_period: 2m

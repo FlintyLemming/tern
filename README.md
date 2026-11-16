@@ -9,18 +9,14 @@ tern 是跑在 Docker 里的备份与同步节点：用 restic 把本机目录�
 
 ## 2. 快速开始
 
-先构建镜像（多架构，amd64 和 arm64；不会推送到任何仓库）：
-
-```bash
-make image VERSION=latest
-```
+镜像发布在 `ghcr.io/flintylemming/tern`，amd64 和 arm64 都有。每个版本（如 `v1.2.0`）有同名的镜像标签；`latest` 跟着最新的正式版本走，`v1.3.0-rc1` 这种带 `-` 的预发布版本不会动它。
 
 把下面的内容存成 `compose.yaml`（仓库里的 `deploy/compose.yaml` 就是它），按自己的目录改好 `volumes` 里的后两行：
 
 ```yaml
 services:
   tern:
-    image: tern:${TERN_VERSION:-latest}
+    image: ghcr.io/flintylemming/tern:${TERN_VERSION:-latest}
     restart: unless-stopped
     init: true
     stop_grace_period: 2m
@@ -52,6 +48,18 @@ docker compose up -d
 浏览器打开 `http://<地址>:8080`，按向导设置管理员密码、节点名和解锁方式。之后在“连接与密钥”里生成密钥、添加连接，在“任务”里新建备份或同步任务。全程不需要进容器敲命令。
 
 向导会检查 `/data` 和 `/secrets` 是不是真的挂载到了宿主机：`/data` 没挂载时向导不让继续（否则重建容器所有设置都会丢）；`/secrets` 没挂载时只能选口令解锁。
+
+要固定在某个版本，在 `compose.yaml` 旁边建一个 `.env` 文件，写一行 `TERN_VERSION=v1.2.0`（docker compose 会自动读它）。升级时改这一行（用 `latest` 就不用改），然后：
+
+```bash
+docker compose pull
+```
+
+```bash
+docker compose up -d
+```
+
+想自己构建镜像：`make image VERSION=latest` 在本机构建两种架构的 `tern:latest`（不推送到任何仓库），再把 `image` 那一行改成 `tern:latest`。
 
 ## 3. 你必须自己保管的两样东西
 
