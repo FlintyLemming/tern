@@ -9,7 +9,7 @@ tern 是跑在 Docker 里的备份与同步节点：用 restic 把本机目录�
 
 ## 2. 快速开始
 
-镜像发布在 `ghcr.io/flintylemming/tern`，amd64 和 arm64 都有。每个版本（如 `v1.2.0`）有同名的镜像标签；`latest` 跟着最新的正式版本走，`v1.3.0-rc1` 这种带 `-` 的预发布版本不会动它。
+镜像发布在 `ghcr.io/flintylemming/tern`，amd64 和 arm64 都有，不用登录就能拉。每个版本（如 `v0.1.0`）有同名的镜像标签；`latest` 跟着最新的正式版本走，`v1.3.0-rc1` 这种带 `-` 的预发布版本不会动它。已有的版本见 [GitHub 上的镜像页](https://github.com/FlintyLemming/tern/pkgs/container/tern)。
 
 把下面的内容存成 `compose.yaml`（仓库里的 `deploy/compose.yaml` 就是它），按自己的目录改好 `volumes` 里的后两行：
 
@@ -49,7 +49,7 @@ docker compose up -d
 
 向导会检查 `/data` 和 `/secrets` 是不是真的挂载到了宿主机：`/data` 没挂载时向导不让继续（否则重建容器所有设置都会丢）；`/secrets` 没挂载时只能选口令解锁。
 
-要固定在某个版本，在 `compose.yaml` 旁边建一个 `.env` 文件，写一行 `TERN_VERSION=v1.2.0`（docker compose 会自动读它）。升级时改这一行（用 `latest` 就不用改），然后：
+要固定在某个版本，在 `compose.yaml` 旁边建一个 `.env` 文件，写一行 `TERN_VERSION=v0.1.0`（docker compose 会自动读它）。升级时改这一行（用 `latest` 就不用改），然后：
 
 ```bash
 docker compose pull
