@@ -116,18 +116,24 @@ restic restore latest --target /path/to/restore
 
 ## 10. 通知
 
-第一版没有内置通知。可以在任务后命令里按 `$TERN_RESULT` 自己发。镜像里没有 curl，用自带的 `wget`：
+第一版没有内置通知。可以在任务后命令里按 `$TERN_RESULT` 用镜像自带的 `curl` 自己发：
 
 ```sh
 case "$TERN_RESULT" in
   success|warning) ;;
-  *) wget -q -O /dev/null --header 'Content-Type: application/json' \
-       --post-data "{\"text\":\"tern: $TERN_TASK_NAME $TERN_RESULT: $TERN_ERROR\"}" \
+  *) msg=$(printf 'tern: %s %s: %s' "$TERN_TASK_NAME" "$TERN_RESULT" "$TERN_ERROR" | tr -d '"\\' | tr '\n' ' ')
+     curl -fsS -m 30 -H 'Content-Type: application/json' \
+       -d "{\"text\":\"$msg\"}" \
        https://example.com/your-webhook ;;
 esac
 ```
 
-任务后命令能用的变量：`TERN_TASK_ID`、`TERN_TASK_NAME`、`TERN_TASK_TYPE`、`TERN_TRIGGER`、`TERN_RESULT`（`success`、`warning`、`partial`、`failed`、`canceled`、`skipped`、`interrupted` 之一）、`TERN_DURATION_SECONDS`、`TERN_BYTES`、`TERN_FILES`、`TERN_ERROR`。执行位置选“某个 SSH 连接的远端”时，命令在对端执行，对端有 curl 也可以用 curl。
+- `tr` 去掉引号、反斜杠和换行，免得错误摘要把 JSON 弄坏。
+- `-m 30` 让卡住的通知地址最多拖 30 秒，而不是拖到任务后命令的超时（默认 10 分钟）。
+- `-f` 让对方返回 HTTP 错误时 curl 也以非 0 退出，运行日志里会多一条 `post-task command failed`，看得出通知没发出去。
+- 容器上设的 `HTTPS_PROXY` 等变量不会传给任务后命令。通知地址要走代理时，在命令里写 `curl -x http://代理地址:端口 ...`。
+
+任务后命令能用的变量：`TERN_TASK_ID`、`TERN_TASK_NAME`、`TERN_TASK_TYPE`、`TERN_TRIGGER`、`TERN_RESULT`（`success`、`warning`、`partial`、`failed`、`canceled`、`skipped`、`interrupted` 之一）、`TERN_DURATION_SECONDS`、`TERN_BYTES`、`TERN_FILES`、`TERN_ERROR`。执行位置选“某个 SSH 连接的远端”时，命令在对端执行，用的是对端的 curl。
 
 ## 11. 环境变量一览
 

@@ -22,7 +22,7 @@ func TestToolsOnBothArchitectures(t *testing.T) {
 			}
 			// An amd64 binary in the arm64 image would still run here under
 			// emulation: check what each binary was built for.
-			for _, bin := range []string{"/usr/local/bin/restic", "/usr/local/bin/rclone", "/usr/local/bin/tern", "/usr/bin/rsync", "/usr/bin/ssh"} {
+			for _, bin := range []string{"/usr/local/bin/restic", "/usr/local/bin/rclone", "/usr/local/bin/tern", "/usr/bin/rsync", "/usr/bin/ssh", "/usr/bin/curl"} {
 				out, code := run("od", "-An", "-tx1", "-j18", "-N2", bin)
 				if got := strings.Join(strings.Fields(out), ""); code != 0 || got != elfMachine[arch] {
 					t.Errorf("%s: ELF machine %q (exit %d), want %s", bin, got, code, elfMachine[arch])
@@ -33,6 +33,10 @@ func TestToolsOnBothArchitectures(t *testing.T) {
 			}
 			if out, code := run("rclone", "version"); code != 0 || !strings.Contains(out, "v1.76.0") || !strings.Contains(out, "os/arch: "+arch) {
 				t.Errorf("rclone version: exit %d\n%s", code, out)
+			}
+			// Post-task commands send notifications with curl (spec §10).
+			if out, code := run("curl", "--version"); code != 0 || !strings.Contains(out, "https") {
+				t.Errorf("curl --version: exit %d, want https among the protocols\n%s", code, out)
 			}
 			for _, c := range [][]string{{"rsync", "--version"}, {"ssh", "-V"}, {"tern", "--version"}} {
 				if out, code := run(c[0], c[1:]...); code != 0 {

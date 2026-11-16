@@ -33,7 +33,7 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
 
 FROM ${BASE_REGISTRY}/alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
 ARG TARGETARCH
-RUN apk add --no-cache rsync openssh-client-default su-exec tzdata ca-certificates
+RUN apk add --no-cache rsync openssh-client-default su-exec tzdata ca-certificates curl
 COPY deploy/fetch-tools.sh /tmp/fetch-tools.sh
 RUN TARGETARCH=$TARGETARCH sh /tmp/fetch-tools.sh /usr/local/bin && rm /tmp/fetch-tools.sh
 COPY --from=build /out/tern /usr/local/bin/tern
