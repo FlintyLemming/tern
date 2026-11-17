@@ -26,12 +26,25 @@ jobs=$(nproc)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-fetch() { # <url> <expected sha256>
-	file=$tmp/$(basename "$1")
-	wget -q -O "$file" "$1" || die "download failed: $1"
-	actual=$(sha256sum "$file" | cut -d' ' -f1)
-	[ "$actual" = "$2" ] || die "SHA256 mismatch for $(basename "$1"): expected $2, got $actual"
-	tar -xzf "$file" -C "$tmp"
+# fetch <expected sha256> <url>...: downloads the archive from the first
+# URL that answers and unpacks it. Every URL serves the same file, and the
+# pinned hash decides what is accepted, so a fallback host is no weaker
+# than the first: a release build should not fail because one is down.
+fetch() {
+	sum=$1
+	shift
+	for url in "$@"; do
+		file=$tmp/$(basename "$url")
+		if wget -q -T 30 -O "$file" "$url"; then
+			actual=$(sha256sum "$file" | cut -d' ' -f1)
+			[ "$actual" = "$sum" ] || die "SHA256 mismatch for $(basename "$url") from $url: expected $sum, got $actual"
+			tar -xzf "$file" -C "$tmp"
+			return
+		fi
+		echo "build-tools: download failed: $url" >&2
+		rm -f "$file"
+	done
+	die "no source answered for $(basename "$file")"
 }
 
 # quiet <log> <command...>: runs the command with its output in <log>, and
@@ -52,8 +65,12 @@ static() {
 	fi
 }
 
-fetch "https://download.samba.org/pub/rsync/src/rsync-$RSYNC_VERSION.tar.gz" "$RSYNC_SHA256"
-fetch "https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-$OPENSSH_VERSION.tar.gz" "$OPENSSH_SHA256"
+fetch "$RSYNC_SHA256" \
+	"https://download.samba.org/pub/rsync/src/rsync-$RSYNC_VERSION.tar.gz" \
+	"https://github.com/RsyncProject/rsync/releases/download/v$RSYNC_VERSION/rsync-$RSYNC_VERSION.tar.gz"
+fetch "$OPENSSH_SHA256" \
+	"https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-$OPENSSH_VERSION.tar.gz" \
+	"https://ftp.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-$OPENSSH_VERSION.tar.gz"
 
 # rsync: tern runs it with -aHs and neither ACLs, xattrs nor compression;
 # everything optional stays out, popt and zlib come from rsync's own tree.
