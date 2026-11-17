@@ -65,7 +65,7 @@ docker compose up -d
 
 QNAP 上也可以不用 Docker，直接装 tern 的 QPKG。装好后它和 QNAP 自带的应用一样：主菜单里有图标，点开是 QTS 桌面里的一个窗口，不另开网页；已经用管理员账号登录了 QTS，就不用再登录 tern。
 
-- 要求 QTS 5.0 或更新，x86_64 机型用 `tern_<版本>_x86_64.qpkg`，ARM 64 位机型用 `tern_<版本>_arm_64.qpkg`。不需要 Container Station。
+- 要求 QTS 5.0 或更新，x86_64 机型用 `tern_<版本>_x86_64.qpkg`，ARM 64 位机型用 `tern_<版本>_arm_64.qpkg`，从 [GitHub Releases](https://github.com/FlintyLemming/tern/releases) 下载（附 `SHA256SUMS`）。不需要 Container Station。
 - 安装：这个包没有 QNAP 的数字签名，先在 App Center 的设置里打开“允许安装没有有效数字签名的应用程序”，再点右上角的“手动安装”选 .qpkg 文件。
 - 自己构建：`make qpkg VERSION=v0.2.0`，两个包在 `build/qnap/` 里；只要一种架构就加 `QPKG_PLATFORMS=linux/amd64`。
 - 窗口走 QTS 自己的端口和证书：QTS 把 `/tern/` 转给 tern，tern 只监听本机回环地址（默认端口 17180，在 `tern.conf` 里改）。所以 `http(s)://<NAS 地址>:<QTS 端口>/tern/` 在浏览器里也能直接打开。

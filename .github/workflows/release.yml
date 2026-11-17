@@ -1,0 +1,184 @@
+# Pushing a version tag (v1.2.0, v1.3.0-rc1, ...) publishes that version:
+#
+# - the production image for both architectures, pushed to GHCR under the
+#   same tag: ghcr.io/<owner>/tern:<tag>. A tag without a hyphen (not a
+#   pre-release) also moves :latest.
+# - the QNAP packages tern_<version>_x86_64.qpkg and tern_<version>_arm_64.qpkg,
+#   each built and checked on a runner of its own architecture.
+# - a GitHub release for the tag with the packages and their SHA256SUMS,
+#   created once the image and both packages are done. A tag with a hyphen
+#   becomes a pre-release.
+#
+# tern in the image and in the packages reports the tag as its version.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Image name and tags
+        id: meta
+        run: |
+          tag=$GITHUB_REF_NAME
+          if ! [[ $tag =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+            echo "::error::git tag '$tag' is not a valid image tag (letters, digits, _ . -)"
+            exit 1
+          fi
+          image=ghcr.io/${GITHUB_REPOSITORY,,}
+          tags=$image:$tag
+          case $tag in
+          *-*) ;;
+          *) tags=$tags,$image:latest ;;
+          esac
+          {
+            echo "tag=$tag"
+            echo "image=$image"
+            echo "tags=$tags"
+          } >>"$GITHUB_OUTPUT"
+
+      # Only the last Dockerfile stage runs per architecture (apk add and the
+      # tool download); the web and Go stages cross-compile natively.
+      - uses: docker/setup-qemu-action@v4
+        with:
+          platforms: arm64
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: deploy/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            VERSION=${{ steps.meta.outputs.tag }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.tag }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Check the pushed image on both architectures
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+          WANT: tern ${{ steps.meta.outputs.tag }}
+        run: |
+          for platform in linux/amd64 linux/arm64; do
+            got=$(docker run --rm --pull always --platform "$platform" "$IMAGE" --version)
+            echo "$platform: $got"
+            if [ "$got" != "$WANT" ]; then
+              echo "::error::$platform reports '$got', want '$WANT'"
+              exit 1
+            fi
+          done
+
+  # The package's tools stage compiles rsync and OpenSSH for the target, far
+  # too slow under emulation, so each architecture builds on its own runner.
+  qpkg:
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: deploy/qnap/Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+          outputs: type=local,dest=build/qnap,platform-split=false
+          provenance: false
+          cache-from: type=gha,scope=qpkg-${{ matrix.arch }}
+          cache-to: type=gha,scope=qpkg-${{ matrix.arch }},mode=max
+
+      - name: Check the package
+        run: |
+          ls -l build/qnap
+          set -- build/qnap/tern_*.qpkg
+          if [ $# -ne 1 ] || [ ! -f "$1" ]; then
+            echo "::error::want one package in build/qnap, found: $*"
+            exit 1
+          fi
+          sh deploy/qnap/check-qpkg.sh "$1" "$GITHUB_REF_NAME"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: qpkg-${{ matrix.arch }}
+          path: build/qnap/tern_*.qpkg
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  release:
+    needs: [image, qpkg]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: qpkg-*
+          merge-multiple: true
+          path: dist
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          cd dist
+          sha256sum tern_*.qpkg >SHA256SUMS
+          cat SHA256SUMS
+          ver=${TAG#v}
+          image=ghcr.io/${GITHUB_REPOSITORY,,}:$TAG
+          cat >notes.md <<EOF
+          - Docker 镜像（amd64、arm64）：\`$image\`
+          - QNAP（QTS 5.0 或更新）：x86_64 机型用 \`tern_${ver}_x86_64.qpkg\`，ARM 64 位机型用 \`tern_${ver}_arm_64.qpkg\`，在 App Center 里手动安装，见 README 第 3 节。
+          EOF
+          files=(tern_*.qpkg SHA256SUMS)
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # A rerun: replace the files, keep the notes.
+            gh release upload "$TAG" "${files[@]}" --clobber
+          else
+            flags=()
+            case $TAG in *-*) flags+=(--prerelease) ;; esac
+            gh release create "$TAG" "${files[@]}" --verify-tag --title "$TAG" \
+              --notes-file notes.md --generate-notes "${flags[@]}"
+          fi
