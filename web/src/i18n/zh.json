@@ -327,7 +327,7 @@
     "delete_mirror": "镜像",
     "mirror_warning": "目的地多出来的文件会被删除。",
     "max_deletes": "单次最多删除",
-    "max_deletes_hint": "超过就中止，需要在运行详情里点“本次允许并重跑”。",
+    "max_deletes_hint": "0 表示不限制：正式同步直接开始传输，不先试运行。大于 0 时，每次正式同步前先试运行一遍，统计要删除的文件；超过这个数就中止，一个都不删，要在运行详情里点“本次允许并重跑”。",
     "compare": "比较方式",
     "compare_size_mtime": "大小加修改时间",
     "compare_checksum": "校验和",

@@ -73,7 +73,7 @@ func (f *fakePlanner) count(prefix string) int {
 func syncTask(direction, mode string, pairs ...model.FolderPair) model.Task {
 	return model.Task{ID: "t1", Type: model.TaskSync, Name: "photos", Sync: &model.SyncSpec{
 		Protocol: "sftp", ConnectionID: "c1", Direction: direction, Pairs: pairs,
-		DeleteMode: mode, MaxDeletes: 100, Compare: "size_mtime", Transfers: 4,
+		DeleteMode: mode, MaxDeletes: new(100), Compare: "size_mtime", Transfers: 4,
 	}}
 }
 
@@ -299,6 +299,56 @@ func TestAllowDeletesOnce(t *testing.T) {
 	}
 	if !reflect.DeepEqual(f.p.maxDeletes, []int{101}) {
 		t.Errorf("Transfer maxDelete = %v, want [101]", f.p.maxDeletes)
+	}
+}
+
+// A delete limit of 0 means no limit: the mirror skips the dry run that
+// counts deletions and gives the tool no limit either. The source check
+// still runs: an empty source never empties the destination.
+func TestMirrorUnlimitedSkipsPlan(t *testing.T) {
+	f := newFixture(t)
+	f.p.plan = deletes(5000)
+	var phases []model.Phase
+	f.env.Progress = func(p model.Progress) { phases = append(phases, p.Phase) }
+	task := syncTask("pull", "mirror", model.FolderPair{Local: t.TempDir(), Remote: "/srv/a"})
+	task.Sync.MaxDeletes = new(0)
+	e := f.engine(task, engine.Request{Kind: model.RunSync})
+	if _, err := e.RunUnit(context.Background(), f.env, 0); err != nil {
+		t.Fatal(err)
+	}
+	if f.p.count("plan") != 0 || f.p.count("remote-state") != 1 {
+		t.Errorf("calls = %q", f.p.calls)
+	}
+	if !reflect.DeepEqual(f.p.maxDeletes, []int{-1}) {
+		t.Errorf("Transfer maxDelete = %v, want [-1]", f.p.maxDeletes)
+	}
+	if want := []model.Phase{model.PhaseCheck, model.PhaseTransfer}; !reflect.DeepEqual(phases, want) {
+		t.Errorf("phases = %q, want %q", phases, want)
+	}
+}
+
+func TestMirrorUnlimitedStillGuardsEmptySource(t *testing.T) {
+	f := newFixture(t)
+	f.p.state = SourceEmpty
+	task := syncTask("pull", "mirror", model.FolderPair{Local: t.TempDir(), Remote: "/srv/a"})
+	task.Sync.MaxDeletes = new(0)
+	_, err := f.engine(task, engine.Request{Kind: model.RunSync}).RunUnit(context.Background(), f.env, 0)
+	wantKind(t, err, model.KindGuard)
+	if f.p.count("transfer") != 0 {
+		t.Errorf("calls = %q", f.p.calls)
+	}
+}
+
+// The dry-run button still shows what would happen, limit or not.
+func TestDryRunWithUnlimitedDeletes(t *testing.T) {
+	f := newFixture(t)
+	task := syncTask("push", "mirror", model.FolderPair{Local: dirWith(t, "a"), Remote: "/srv/a"})
+	task.Sync.MaxDeletes = new(0)
+	if _, err := f.engine(task, engine.Request{Kind: model.RunDryRun}).RunUnit(context.Background(), f.env, 0); err != nil {
+		t.Fatal(err)
+	}
+	if f.p.count("plan") != 1 || f.p.count("transfer") != 0 {
+		t.Errorf("calls = %q", f.p.calls)
 	}
 }
 

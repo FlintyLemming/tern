@@ -67,6 +67,10 @@ func New(t model.Task, req engine.Request, p Planner, check func(context.Context
 func (e *Engine) push() bool   { return e.spec.Direction == "push" }
 func (e *Engine) mirror() bool { return e.spec.DeleteMode == "mirror" }
 
+// limited reports whether a mirror counts its deletions before it
+// transfers: a delete limit of 0 means none, and no dry run.
+func (e *Engine) limited() bool { return e.mirror() && e.spec.DeleteLimit() > 0 }
+
 func (e *Engine) unitName(p model.FolderPair) string {
 	if e.push() {
 		return p.Local + " → " + p.Remote
@@ -224,7 +228,8 @@ func withPlanTotals(pr model.Progress, plan Plan) model.Progress {
 
 // RunUnit syncs pair i. The steps run in this order and stop at the first
 // error: local end, mirror source check, plan, (dry run ends here), delete
-// limit, transfer. Each step's progress carries its phase.
+// limit, transfer. A sync plans only for a mirror with a delete limit.
+// Each step's progress carries its phase.
 func (e *Engine) RunUnit(ctx context.Context, env engine.Env, i int) (model.UnitResult, error) {
 	p := e.spec.Pairs[i]
 	name := e.unitName(p)
@@ -247,7 +252,7 @@ func (e *Engine) RunUnit(ctx context.Context, env engine.Env, i int) (model.Unit
 	}
 
 	var plan Plan
-	if e.mirror() || dryRun {
+	if e.limited() || dryRun {
 		report(env, model.Progress{Phase: model.PhasePlan})
 		// A dry run moves no data: only its counts mean anything.
 		planEnv := withProgress(env, func(pr model.Progress) model.Progress {
@@ -265,9 +270,9 @@ func (e *Engine) RunUnit(ctx context.Context, env engine.Env, i int) (model.Unit
 	}
 
 	maxDelete := -1
-	if e.mirror() {
-		if plan.DeleteCount > e.spec.MaxDeletes && !e.req.AllowDeletes {
-			return out, guardErr("would delete %d files (limit %d)", plan.DeleteCount, e.spec.MaxDeletes)
+	if e.limited() {
+		if limit := e.spec.DeleteLimit(); plan.DeleteCount > limit && !e.req.AllowDeletes {
+			return out, guardErr("would delete %d files (limit %d)", plan.DeleteCount, limit)
 		}
 		// The tool's own limit is a second gate: if more would go than
 		// were just counted, something changed in between.

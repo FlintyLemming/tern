@@ -14,7 +14,7 @@ var sshArg = `ssh -F "/run/x/ssh_config"`
 
 func spec(direction, mode string) model.SyncSpec {
 	return model.SyncSpec{Protocol: "rsync", ConnectionID: "c1", Direction: direction, DeleteMode: mode,
-		MaxDeletes: 100, Compare: "size_mtime"}
+		MaxDeletes: new(100), Compare: "size_mtime"}
 }
 
 var pairA = model.FolderPair{Local: "/sources/a", Remote: "/srv/a"}

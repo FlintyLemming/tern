@@ -84,16 +84,30 @@ type SyncSpec struct {
 	Direction    string       `json:"direction"` // "push" | "pull"
 	Pairs        []FolderPair `json:"pairs"`
 	DeleteMode   string       `json:"delete_mode"` // "keep" | "mirror"
-	MaxDeletes   int          `json:"max_deletes"`
-	Excludes     []string     `json:"excludes"`
-	Compare      string       `json:"compare"`   // "size_mtime" | "checksum"
-	LimitKiB     int          `json:"limit_kib"` // 0 = unlimited
-	Transfers    int          `json:"transfers"` // files in parallel; must be 0 for rsync
+	// MaxDeletes caps the files a mirror deletes in one run: a dry run
+	// counts them first, and past the cap nothing is deleted. 0 means no
+	// cap and no dry run. Left out (nil), it is DefaultMaxDeletes.
+	MaxDeletes *int     `json:"max_deletes"`
+	Excludes   []string `json:"excludes"`
+	Compare    string   `json:"compare"`   // "size_mtime" | "checksum"
+	LimitKiB   int      `json:"limit_kib"` // 0 = unlimited
+	Transfers  int      `json:"transfers"` // files in parallel; must be 0 for rsync
 }
 
 type FolderPair struct {
 	Local  string `json:"local"`
 	Remote string `json:"remote"`
+}
+
+// DefaultMaxDeletes is a mirror's delete limit when the task leaves it out.
+const DefaultMaxDeletes = 100
+
+// DeleteLimit is the mirror's delete limit; 0 means none.
+func (s SyncSpec) DeleteLimit() int {
+	if s.MaxDeletes == nil {
+		return DefaultMaxDeletes
+	}
+	return *s.MaxDeletes
 }
 
 // ApplyDefaults fills in what the user may leave out.
@@ -118,8 +132,8 @@ func (t *Task) ApplyDefaults() {
 		if s.DeleteMode == "" {
 			s.DeleteMode = "keep"
 		}
-		if s.MaxDeletes == 0 {
-			s.MaxDeletes = 100
+		if s.MaxDeletes == nil {
+			s.MaxDeletes = new(DefaultMaxDeletes)
 		}
 		if s.Compare == "" {
 			s.Compare = "size_mtime"

@@ -171,7 +171,7 @@ func (t Task) Validate() map[string]string {
 		}
 		pairOverlaps(s.Pairs, f)
 		excludes("sync.excludes", s.Excludes)
-		nonNeg("sync.max_deletes", s.MaxDeletes)
+		nonNeg("sync.max_deletes", s.DeleteLimit())
 		nonNeg("sync.limit_kib", s.LimitKiB)
 		if s.Transfers < 0 || s.Transfers > 64 || (s.Protocol == "rsync" && s.Transfers != 0) {
 			f["sync.transfers"] = "invalid"

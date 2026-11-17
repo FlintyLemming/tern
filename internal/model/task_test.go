@@ -34,6 +34,15 @@ func backupTask() Task {
 	return t
 }
 
+// 0 is a setting of its own (no limit), not "left out".
+func TestZeroDeleteLimitKept(t *testing.T) {
+	task := Task{Type: TaskSync, Sync: &SyncSpec{Protocol: "sftp", MaxDeletes: new(0)}}
+	task.ApplyDefaults()
+	if got := task.Sync.MaxDeletes; got == nil || *got != 0 {
+		t.Errorf("MaxDeletes = %v, want 0", got)
+	}
+}
+
 func TestApplyDefaults(t *testing.T) {
 	task := Task{Type: TaskSync, Sync: &SyncSpec{Protocol: "sftp"}}
 	task.ApplyDefaults()
@@ -41,7 +50,7 @@ func TestApplyDefaults(t *testing.T) {
 		t.Errorf("Retry = %+v", task.Retry)
 	}
 	s := task.Sync
-	if s.DeleteMode != "keep" || s.MaxDeletes != 100 || s.Compare != "size_mtime" || s.Transfers != 4 {
+	if s.DeleteMode != "keep" || s.MaxDeletes == nil || *s.MaxDeletes != 100 || s.Compare != "size_mtime" || s.Transfers != 4 {
 		t.Errorf("Sync = %+v", s)
 	}
 	for name, h := range map[string]Hook{"pre": task.Pre, "post": task.Post} {
@@ -152,7 +161,7 @@ func TestValidateMisc(t *testing.T) {
 		"sync.delete_mode":    func(t *Task) { t.Sync.DeleteMode = "wipe" },
 		"sync.compare":        func(t *Task) { t.Sync.Compare = "magic" },
 		"sync.pairs":          func(t *Task) { t.Sync.Pairs = nil },
-		"sync.max_deletes":    func(t *Task) { t.Sync.MaxDeletes = -1 },
+		"sync.max_deletes":    func(t *Task) { t.Sync.MaxDeletes = new(-1) },
 		"sync.connection_id":  func(t *Task) { t.Sync.ConnectionID = "" },
 		"retry.retries":       func(t *Task) { t.Retry.Retries = 11 },
 		"retry.delays_sec[1]": func(t *Task) { t.Retry.DelaysSec = []int{60, 0} },

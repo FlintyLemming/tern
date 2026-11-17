@@ -129,6 +129,22 @@ func decodeList(t *testing.T, body []byte) []map[string]any {
 	return list
 }
 
+// max_deletes 0 means no limit and survives create and update; left out,
+// it is 100.
+func TestSyncTaskZeroDeleteLimit(t *testing.T) {
+	h := readyHarness(t)
+	body := syncBody("photos", h.sshConnID())
+	body["sync"].(map[string]any)["max_deletes"] = 0
+	task := h.newTask(body)
+	if got := task["sync"].(map[string]any)["max_deletes"]; got != float64(0) {
+		t.Fatalf("created max_deletes = %v, want 0", got)
+	}
+	updated := wantStatus(t, h.do("PUT", taskPath(task), task), http.StatusOK)
+	if got := updated["sync"].(map[string]any)["max_deletes"]; got != float64(0) {
+		t.Errorf("updated max_deletes = %v, want 0", got)
+	}
+}
+
 func TestCreateSyncTask(t *testing.T) {
 	h := readyHarness(t)
 	task := h.newSyncTask("photos")

@@ -14,7 +14,7 @@ var fixedArgs = []string{"--config", "/run/x/rclone.conf", "--use-json-log", "--
 
 func spec(direction, mode string) model.SyncSpec {
 	return model.SyncSpec{Protocol: "sftp", ConnectionID: "c1", Direction: direction, DeleteMode: mode,
-		MaxDeletes: 100, Compare: "size_mtime", Transfers: 4}
+		MaxDeletes: new(100), Compare: "size_mtime", Transfers: 4}
 }
 
 var pairA = model.FolderPair{Local: "/sources/a", Remote: "/srv/a"}

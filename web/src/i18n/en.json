@@ -327,7 +327,7 @@
     "delete_mirror": "Mirror",
     "mirror_warning": "Files that exist only at the destination are deleted.",
     "max_deletes": "Most deletions per run",
-    "max_deletes_hint": "Above this the run stops; allow it once from the run's page.",
+    "max_deletes_hint": "0 means no limit: a sync starts transferring right away, without a dry run first. Above 0, every sync first does a dry run to count the files it would delete; past this number it stops without deleting anything, and you can allow it once from the run's page.",
     "compare": "Compare by",
     "compare_size_mtime": "Size and modification time",
     "compare_checksum": "Checksum",
