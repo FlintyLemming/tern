@@ -86,13 +86,7 @@ func TestBrowseRemote(t *testing.T) {
 				t.Errorf("missing folder: path %q, missing %v, names %q", l.Path, l.Missing, l.names())
 			}
 
-			// The starting point: the SSH user's home. Not the WebDAV root:
-			// the test server holds every earlier test's folders there and
-			// takes over 30 s to answer a PROPFIND for it (rclone serve
-			// with its directory cache off), which rclone gives up on.
-			if protocol == "webdav" {
-				return
-			}
+			// The starting point: the SSH user's home, the WebDAV root.
 			l = browse(t, a, base, "")
 			if l.Path != "" {
 				t.Errorf("starting point listed as %q", l.Path)
