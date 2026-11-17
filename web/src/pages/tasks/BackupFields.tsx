@@ -1,6 +1,7 @@
 import { Plus, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { BackupSpec, Connection } from '../../api/types'
+import { PathInput } from '../../browse/FolderPicker'
 import { Button } from '../../ui/Button'
 import { Field } from '../../ui/Field'
 import { Input, SecretInput } from '../../ui/Input'
@@ -32,6 +33,7 @@ export function BackupFields({
   const { t } = useTranslation()
   const fe = useFieldError()
   const sources = b.sources.length ? b.sources : ['']
+  const repoConn = sshConns.find((c) => c.id === b.connection_id)
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-2">
@@ -40,11 +42,11 @@ export function BackupFields({
           <div key={i} data-testid="source" className="flex items-start gap-2">
             <div className="flex-1">
               <Field label={t('task.source')} error={fe(`backup.sources[${i}]`)} className="flex flex-col gap-1 [&>label]:sr-only">
-                <Input
+                <PathInput
                   value={src}
                   placeholder={t('task.local_placeholder')}
-                  spellCheck={false}
-                  onChange={(e) => set({ sources: sources.map((s, j) => (j === i ? e.target.value : s)) })}
+                  source={{ kind: 'local' }}
+                  onChange={(v) => set({ sources: sources.map((s, j) => (j === i ? v : s)) })}
                 />
               </Field>
             </div>
@@ -71,7 +73,13 @@ export function BackupFields({
           />
         </Field>
         <Field label={t('task.repo_path')} hint={t('task.repo_path_hint')} error={fe('backup.repo_path')}>
-          <Input value={b.repo_path} spellCheck={false} placeholder="/srv/backup/…" onChange={(e) => set({ repo_path: e.target.value })} />
+          <PathInput
+            value={b.repo_path}
+            placeholder="/srv/backup/…"
+            source={repoConn ? { kind: 'connection', id: repoConn.id, type: 'ssh', name: repoConn.name } : null}
+            unavailable={t('browse.need_conn')}
+            onChange={(v) => set({ repo_path: v })}
+          />
         </Field>
       </div>
 

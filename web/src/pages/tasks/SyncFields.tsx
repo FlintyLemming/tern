@@ -1,9 +1,9 @@
 import { Plus, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { Connection, Protocol, SyncSpec } from '../../api/types'
+import { PathInput } from '../../browse/FolderPicker'
 import { Button } from '../../ui/Button'
 import { Field } from '../../ui/Field'
-import { Input } from '../../ui/Input'
 import { Select } from '../../ui/Select'
 import { ExcludesField, NumField, useFieldError } from './form'
 
@@ -14,6 +14,7 @@ export function SyncFields({ s, set, conns }: { s: SyncSpec; set: (p: Partial<Sy
   const fe = useFieldError()
   const usable = conns.filter((c) => c.type === connType(s.protocol))
   const pairs = s.pairs.length ? s.pairs : [{ local: '', remote: '' }]
+  const conn = usable.find((c) => c.id === s.connection_id)
 
   const setProtocol = (p: Protocol) => {
     const keepConn = conns.find((c) => c.id === s.connection_id)?.type === connType(p)
@@ -61,18 +62,19 @@ export function SyncFields({ s, set, conns }: { s: SyncSpec; set: (p: Partial<Sy
           <div key={i} data-testid="pair" className="flex items-start gap-2">
             <div className="grid flex-1 gap-2 sm:grid-cols-2">
               <Field label={t('task.pair_local')} error={fe(`sync.pairs[${i}].local`)}>
-                <Input
+                <PathInput
                   value={p.local}
-                  spellCheck={false}
                   placeholder={t('task.local_placeholder')}
-                  onChange={(e) => set({ pairs: pairs.map((x, j) => (j === i ? { ...x, local: e.target.value } : x)) })}
+                  source={{ kind: 'local' }}
+                  onChange={(v) => set({ pairs: pairs.map((x, j) => (j === i ? { ...x, local: v } : x)) })}
                 />
               </Field>
               <Field label={t('task.pair_remote')} error={fe(`sync.pairs[${i}].remote`)}>
-                <Input
+                <PathInput
                   value={p.remote}
-                  spellCheck={false}
-                  onChange={(e) => set({ pairs: pairs.map((x, j) => (j === i ? { ...x, remote: e.target.value } : x)) })}
+                  source={conn ? { kind: 'connection', id: conn.id, type: conn.type === 'webdav' ? 'webdav' : 'ssh', name: conn.name } : null}
+                  unavailable={t('browse.need_conn')}
+                  onChange={(v) => set({ pairs: pairs.map((x, j) => (j === i ? { ...x, remote: v } : x)) })}
                 />
               </Field>
             </div>

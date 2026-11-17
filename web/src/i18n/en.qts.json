@@ -34,5 +34,8 @@
   "settings": {
     "timezone_hint": "Set by QTS's time zone. After changing it, stop and start tern in App Center.",
     "timezone_unknown": "QTS's time zone could not be read, so times here are shown in UTC. Try stopping and starting tern in App Center."
+  },
+  "browse": {
+    "where_local": "Folders on the NAS. Those marked \"volume\" are data volumes."
   }
 }

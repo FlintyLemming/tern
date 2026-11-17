@@ -44,9 +44,11 @@ type Deps struct {
 
 	// What the API itself does with repositories (attach on task
 	// creation, list snapshots). Access defaults to the real opener,
-	// ResticBin to "restic".
+	// ResticBin to "restic". RcloneBin is what lists the folders at a
+	// connection's remote end; it defaults to "rclone".
 	Access    engine.AccessOpener
 	ResticBin string
+	RcloneBin string
 	// Mounted tells whether a path is on a mounted volume; restores only
 	// go to such paths. Defaults to mounts.IsMounted.
 	Mounted func(path string) (bool, error)
@@ -145,6 +147,7 @@ func New(d Deps) *API {
 	a.registerSnapshots()
 	a.registerRuns()
 	a.registerSettings()
+	a.registerBrowse()
 
 	// Anything else under /api/, including a known path with the wrong method.
 	a.mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {

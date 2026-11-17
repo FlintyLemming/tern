@@ -366,3 +366,61 @@ it('list: command line dialog lists each line', async () => {
   expect(await within(dlg).findByText('rclone sync /data/photos remote:/srv/photos')).toBeInTheDocument()
   expect(within(dlg).getAllByRole('button', { name: '复制' })).toHaveLength(2)
 })
+
+// ---- folder pickers
+
+const folders = (path: string, names: string[]) => ({
+  body: { path, missing: false, truncated: false, entries: names.map((n) => ({ name: n, path: `${path === '/' ? '' : path}/${n}`, mount: false })) },
+})
+const browseButton = (input: HTMLElement) => within(input.parentElement!).getByRole('button', { name: '浏览文件夹' })
+const askedPath = (url: string) => new URL(url, 'http://x').searchParams.get('path') ?? ''
+
+it('backup: sources browse this machine, the repository path its connection', async () => {
+  const { f, user } = renderAt('/tasks/new?type=backup', {
+    'GET /api/v1/browse': folders('/data', ['mail']),
+    'GET /api/v1/connections/c1/browse': folders('/srv', ['repos']),
+  })
+  const source = within((await screen.findAllByTestId('source'))[0]).getByLabelText('源目录')
+  await user.click(browseButton(source))
+  let picker = await screen.findByRole('dialog', { name: '选择文件夹' })
+  await within(picker).findByRole('button', { name: 'mail' })
+  await user.click(within(picker).getByRole('button', { name: '选择此文件夹' }))
+  expect(source).toHaveValue('/data')
+
+  const repo = screen.getByLabelText('远端路径')
+  expect(browseButton(repo)).toBeDisabled()
+  await choose(user, '仓库连接', 'nas2')
+  await user.click(browseButton(repo))
+  picker = await screen.findByRole('dialog', { name: '选择文件夹' })
+  expect(within(picker).getByText('nas2 上的文件夹')).toBeInTheDocument()
+  await within(picker).findByRole('button', { name: 'repos' })
+  await user.click(within(picker).getByRole('button', { name: '选择此文件夹' }))
+  expect(repo).toHaveValue('/srv')
+  expect(f.of('GET', '/api/v1/connections/c1/browse').map((c) => askedPath(c.url))).toEqual([''])
+})
+
+it('sync: each side of a folder pair browses its own end', async () => {
+  const { f, user } = renderAt('/tasks/new?type=sync', {
+    'GET /api/v1/browse': folders('/data', ['music']),
+    'GET /api/v1/connections/c2/browse': folders('/', ['Music']),
+  })
+  await screen.findByLabelText('名称')
+  const pair = screen.getAllByTestId('pair')[0]
+  const remote = within(pair).getByLabelText('远端路径')
+  expect(browseButton(remote)).toBeDisabled()
+  await choose(user, '协议', 'WebDAV')
+  await choose(user, '连接', 'dav')
+  await user.click(browseButton(remote))
+  let picker = await screen.findByRole('dialog', { name: '选择文件夹' })
+  await user.click(await within(picker).findByRole('button', { name: 'Music' }))
+  await waitFor(() => expect(f.of('GET', '/api/v1/connections/c2/browse')).toHaveLength(2))
+  expect(f.of('GET', '/api/v1/connections/c2/browse').map((c) => askedPath(c.url))).toEqual(['/', '/Music'])
+
+  await user.click(within(picker).getByRole('button', { name: '取消' }))
+  const local = within(pair).getByLabelText('本机路径')
+  await user.click(browseButton(local))
+  picker = await screen.findByRole('dialog', { name: '选择文件夹' })
+  await within(picker).findByRole('button', { name: 'music' })
+  await user.click(within(picker).getByRole('button', { name: '选择此文件夹' }))
+  expect(local).toHaveValue('/data')
+})

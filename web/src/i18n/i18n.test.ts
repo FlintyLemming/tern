@@ -31,7 +31,7 @@ const errorCodes = [
   'validation', 'bad_request', 'not_found', 'conflict', 'in_use', 'unauthorized', 'forbidden', 'csrf', 'rate_limited',
   'internal', 'already_setup', 'vault_locked', 'vault_unavailable', 'host_key_required', 'passphrase_required',
   'bad_passphrase', 'unsupported_key', 'unreachable', 'task_active', 'paused', 'recovery_not_confirmed',
-  'wrong_repo_password', 'unavailable', 'network', 'qts_admin_required',
+  'wrong_repo_password', 'unavailable', 'network', 'qts_admin_required', 'unreadable',
 ]
 const fieldCodes = [
   'required', 'invalid', 'too_long', 'too_short', 'not_found', 'not_allowed', 'immutable', 'overlaps', 'never_fires',

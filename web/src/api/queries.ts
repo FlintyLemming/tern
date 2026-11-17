@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { applyPlatform } from '../i18n'
 import { request } from './client'
 import type {
@@ -7,6 +7,7 @@ import type {
   ConnectionInput,
   CreatedTask,
   CsrfToken,
+  FolderListing,
   Overview,
   ProbeResult,
   Progress,
@@ -44,6 +45,7 @@ export const qk = {
   run: (id: string) => ['runs', 'one', id] as const,
   progress: (runId: string) => ['progress', runId] as const,
   snapshots: (taskId: string) => ['snapshots', taskId] as const,
+  browse: (src: BrowseSource, path: string) => ['browse', browseBase(src), path] as const,
 }
 
 const enc = encodeURIComponent
@@ -275,6 +277,37 @@ export const useSnapshots = (taskId: string) =>
     queryFn: () => request<SnapshotList>('GET', `/api/v1/tasks/${enc(taskId)}/snapshots`),
     enabled: Boolean(taskId),
     staleTime: 30_000,
+  })
+
+// ---- folder browsing (the folder picker)
+
+// Where a folder picker looks: tern's own file system, the remote end of a
+// stored connection, or a snapshot of a backup task.
+export type BrowseSource =
+  | { kind: 'local' }
+  | { kind: 'connection'; id: string; type: 'ssh' | 'webdav'; name: string }
+  | { kind: 'snapshot'; taskId: string; snapshotId: string; shortId: string; start: string }
+
+export function browseBase(src: BrowseSource): string {
+  switch (src.kind) {
+    case 'local':
+      return '/api/v1/browse'
+    case 'connection':
+      return `/api/v1/connections/${enc(src.id)}/browse`
+    case 'snapshot':
+      return `/api/v1/tasks/${enc(src.taskId)}/snapshots/${enc(src.snapshotId)}/browse`
+  }
+}
+
+export const useBrowse = (src: BrowseSource, path: string) =>
+  useQuery({
+    queryKey: qk.browse(src, path),
+    queryFn: () => request<FolderListing>('GET', path ? `${browseBase(src)}?path=${enc(path)}` : browseBase(src)),
+    staleTime: 30_000,
+    // a remote listing can take its full timeout; asking again only doubles that
+    retry: false,
+    refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
   })
 
 export const useRestore = () =>

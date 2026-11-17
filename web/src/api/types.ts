@@ -280,6 +280,21 @@ export interface SnapshotList {
   repository: string
 }
 
+// One folder's subfolders (GET …/browse). path is the folder listed: when
+// the one asked for does not exist (missing), its nearest existing ancestor.
+export interface FolderListing {
+  path: string
+  missing: boolean
+  truncated: boolean
+  entries: FolderEntry[]
+}
+
+export interface FolderEntry {
+  name: string
+  path: string
+  mount: boolean // a mount point: a volume of the container, a NAS data volume
+}
+
 export interface Recovery {
   repository: string
   password: string

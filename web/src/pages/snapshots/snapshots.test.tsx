@@ -179,3 +179,43 @@ it('recovery info: nothing of it stays in memory after close', async () => {
   await waitFor(() => expect(inMutationCache(r.qc, 'REPO-SECRET-PW')).toBe(false))
   expect(inMutationCache(r.qc, 'admin-pw-for-recovery')).toBe(false)
 })
+
+it('restore: picks a folder inside the snapshot; / means all of it', async () => {
+  const inSnap: Record<string, string[]> = { '/': ['data'], '/data/docs': ['2024'], '/data/docs/2024': [] }
+  const r = renderAt('/snapshots?task=t1', {
+    'GET /api/v1/tasks/t1/snapshots/abcd1234/browse': (c) => {
+      const p = new URL(c.url, 'http://x').searchParams.get('path') ?? '/'
+      const names = inSnap[p] ?? []
+      return { body: { path: p, missing: false, truncated: false, entries: names.map((n) => ({ name: n, path: `${p === '/' ? '' : p}/${n}`, mount: false })) } }
+    },
+    'GET /api/v1/browse': { body: { path: '/targets', missing: false, truncated: false, entries: [] } },
+  })
+  const dlg = await openRestore(r)
+  const sub = within(dlg).getByLabelText('子路径（可选）')
+  await r.user.click(within(sub.parentElement!).getByRole('button', { name: '浏览文件夹' }))
+  let picker = await screen.findByRole('dialog', { name: '选择文件夹' })
+  expect(within(picker).getByText('快照 abcd1234 里的文件夹')).toBeInTheDocument()
+  // it opens at what the snapshot backed up
+  await r.user.click(await within(picker).findByRole('button', { name: '2024' }))
+  await within(picker).findByText('这里没有子文件夹。')
+  await r.user.click(within(picker).getByRole('button', { name: '选择此文件夹' }))
+  await waitFor(() => expect(screen.getAllByRole('dialog')).toHaveLength(1))
+  expect(sub).toHaveValue('/data/docs/2024')
+  expect(within(dlg).getByText('restic -r sftp:backup@nas2.example:/srv/repo restore abcd1234:/data/docs/2024 --target …')).toBeInTheDocument()
+
+  await r.user.click(within(sub.parentElement!).getByRole('button', { name: '浏览文件夹' }))
+  picker = await screen.findByRole('dialog', { name: '选择文件夹' })
+  const bar = within(picker).getByLabelText('路径')
+  await r.user.clear(bar)
+  await r.user.type(bar, '/{Enter}')
+  await within(picker).findByRole('button', { name: 'data' })
+  await r.user.click(within(picker).getByRole('button', { name: '选择此文件夹' }))
+  await waitFor(() => expect(sub).toHaveValue(''))
+
+  const target = within(dlg).getByLabelText('目标目录')
+  await r.user.click(within(target.parentElement!).getByRole('button', { name: '浏览文件夹' }))
+  picker = await screen.findByRole('dialog', { name: '选择文件夹' })
+  await within(picker).findByText('这里没有子文件夹。')
+  await r.user.click(within(picker).getByRole('button', { name: '选择此文件夹' }))
+  expect(target).toHaveValue('/targets')
+})

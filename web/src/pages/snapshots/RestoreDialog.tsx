@@ -5,13 +5,13 @@ import { ApiError } from '../../api/client'
 import { errorText, fieldCodes, fieldText } from '../../api/errors'
 import { useRestore } from '../../api/queries'
 import type { Snapshot } from '../../api/types'
+import { PathInput } from '../../browse/FolderPicker'
 import { shQuote } from '../../lib/recovery'
 import { Banner } from '../../ui/Banner'
 import { Button } from '../../ui/Button'
 import { CodeBlock } from '../../ui/CodeBlock'
 import { Dialog } from '../../ui/Dialog'
 import { Field } from '../../ui/Field'
-import { Input } from '../../ui/Input'
 
 // restoreCommand is what restic would be run with — shown so the restore can
 // be repeated by hand without tern.
@@ -61,10 +61,18 @@ export function RestoreDialog({ taskId, repository, snap, onClose }: { taskId: s
     >
       <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
         <Field label={t('snap.subpath')} hint={t('snap.subpath_hint')} error={fieldText(t, fields.subpath ?? fields.snapshot_id)}>
-          <Input value={subpath} onChange={(e) => setSubpath(e.target.value)} spellCheck={false} />
+          <PathInput
+            value={subpath}
+            onChange={setSubpath}
+            // "/" is the whole snapshot, which is what an empty subpath says
+            onPick={(p) => setSubpath(p === '/' ? '' : p)}
+            source={
+              snap ? { kind: 'snapshot', taskId, snapshotId: snap.id, shortId: snap.short_id, start: snap.paths.length === 1 ? snap.paths[0] : '/' } : null
+            }
+          />
         </Field>
         <Field label={t('snap.target')} error={required ? t('v.required') : fieldText(t, fields.target_dir)}>
-          <Input value={target} onChange={(e) => setTarget(e.target.value)} spellCheck={false} placeholder={`/targets/restore-${snap?.short_id ?? ''}`} />
+          <PathInput value={target} onChange={setTarget} source={{ kind: 'local' }} placeholder={`/targets/restore-${snap?.short_id ?? ''}`} />
         </Field>
         <div className="flex flex-col gap-1">
           <p className="text-eyebrow text-ink-secondary">{t('snap.command')}</p>

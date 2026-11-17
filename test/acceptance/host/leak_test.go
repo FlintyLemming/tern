@@ -330,6 +330,7 @@ func (w *leakWorld) scanAPI(t *testing.T) {
 	t.Helper()
 	params := map[string]string{
 		"/api/v1/connections/{id}":        "connection",
+		"/api/v1/connections/{id}/browse": "connection",
 		"/api/v1/tasks/{id}":              "task",
 		"/api/v1/tasks/{id}/snapshots":    "backup",
 		"/api/v1/tasks/{id}/command-line": "task",
@@ -337,12 +338,27 @@ func (w *leakWorld) scanAPI(t *testing.T) {
 		"/api/v1/runs/{id}/log":           "run",
 	}
 	w.ids["backup"] = []string{w.backup}
+	// The backup's snapshots, for the routes that look inside one.
+	var list struct {
+		Snapshots []struct {
+			ID string `json:"id"`
+		} `json:"snapshots"`
+	}
+	w.c.must(http.StatusOK, "GET", "/api/v1/tasks/"+w.backup+"/snapshots", nil, &list)
+	var snapshotPaths []string
+	for _, sn := range list.Snapshots {
+		snapshotPaths = append(snapshotPaths, "/api/v1/tasks/"+w.backup+"/snapshots/"+sn.ID+"/browse")
+	}
 	fetched := 0
 	for _, route := range getRoutes(t) {
 		var paths []string
 		switch kind, ok := params[route]; {
 		case route == "/api/v1/events":
 			continue // a stream: recorded while the scenario ran, scanned below
+		case route == "/api/v1/tasks/{id}/snapshots/{snapshot}/browse":
+			if paths = snapshotPaths; len(paths) == 0 {
+				t.Fatalf("no snapshots to fetch %s with", route)
+			}
 		case ok:
 			for _, id := range w.ids[kind] {
 				paths = append(paths, strings.Replace(route, "{id}", id, 1))

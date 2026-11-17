@@ -20,6 +20,7 @@ import (
 	"tern/internal/config"
 	"tern/internal/engine"
 	"tern/internal/engine/fake"
+	"tern/internal/engine/faketool"
 	"tern/internal/engine/restic/restictest"
 	"tern/internal/events"
 	"tern/internal/hooks"
@@ -70,6 +71,9 @@ type harness struct {
 	// What the API itself does with a repository goes to a fake restic;
 	// by default every call succeeds, so a repository "exists".
 	restic *restictest.Fake
+	// rclone is the API's own rclone, which lists folders at a
+	// connection's remote end (sync runs get theirs from realSync).
+	rclone *faketool.Fake
 	// check replaces the connection preflight, which passes when it is
 	// nil: the test SSH servers do not know the generated keys.
 	check func(connID string) error
@@ -153,7 +157,7 @@ func newHarness(t *testing.T) *harness {
 	t.Cleanup(func() { st.Close() })
 	h := &harness{t: t, st: st, dbDir: dbDir, secrets: t.TempDir(), now: time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC),
 		dataDir: t.TempDir(), runtimeDir: shortDir(t), engines: map[string]*fake.Engine{}, restic: restictest.New(t),
-		mounts: sysinfo.Mounts{Data: true, Secrets: true}}
+		rclone: faketool.New(t, "rclone"), mounts: sysinfo.Mounts{Data: true, Secrets: true}}
 	t.Cleanup(func() { h.stopCore() }) // before the store closes
 	h.restart()
 	return h
@@ -210,6 +214,7 @@ func (h *harness) restart() {
 		Cfg:       cfg,
 		Access:    harnessAccess{h: h, real: access.Opener{Store: h.st, Vault: h.vault}},
 		ResticBin: h.restic.Bin,
+		RcloneBin: h.rclone.Bin,
 		Mounted:   func(string) (bool, error) { return !h.notMounted, nil },
 		Mounts:    h.mounts,
 		Store:     h.st,

@@ -34,5 +34,8 @@
   "settings": {
     "timezone_hint": "由 QTS 的时区设置决定。改了时区以后，在 App Center 里停用再启用 tern。",
     "timezone_unknown": "没能读到 QTS 的时区设置，界面上的时间按 UTC 显示。在 App Center 里停用再启用 tern 试试。"
+  },
+  "browse": {
+    "where_local": "NAS 上的文件夹。标着「卷」的是数据卷。"
   }
 }

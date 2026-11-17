@@ -76,7 +76,8 @@
     "recovery_not_confirmed": "Save the recovery information and confirm it first",
     "wrong_repo_password": "A repository already exists at this path, and this is not its password.",
     "unavailable": "Not available right now",
-    "network": "The request did not reach tern"
+    "network": "The request did not reach tern",
+    "unreadable": "This folder cannot be read; tern may lack permission"
   },
   "field": {
     "required": "Required",
@@ -487,5 +488,29 @@
     "tool_missing": "Missing",
     "language_title": "Language",
     "timezone_unknown": "TZ is not set in the container, so times here are shown in UTC."
+  },
+  "browse": {
+    "open": "Browse folders",
+    "title": "Choose a folder",
+    "where_local": "Folders in tern's container. Those marked \"volume\" are mounted volumes.",
+    "where_conn": "Folders on {{name}}",
+    "where_snapshot": "Folders in snapshot {{id}}",
+    "up": "Up one level",
+    "home": "Home folder",
+    "root": "Root folder",
+    "path": "Path",
+    "path_hint": "You can type a path and press Enter to go there.",
+    "go": "Go",
+    "folders": "Subfolders",
+    "mount": "volume",
+    "mount_title": "Mount point: a separately mounted volume",
+    "loading": "Reading…",
+    "empty": "No subfolders here.",
+    "missing": "{{path}} does not exist; showing the nearest folder above it.",
+    "truncated": "Showing the first {{n}} subfolders. If yours is not among them, type its path.",
+    "home_hint": "The home folder itself cannot be chosen; open one of its subfolders.",
+    "bad_path": "The path must start with /",
+    "choose": "Choose this folder",
+    "need_conn": "Choose a connection first"
   }
 }

@@ -76,7 +76,8 @@
     "recovery_not_confirmed": "请先保存恢复信息并勾选确认",
     "wrong_repo_password": "这个路径下已有仓库，密码不对。",
     "unavailable": "暂时无法生成",
-    "network": "网络不通，请求没有到达 tern"
+    "network": "网络不通，请求没有到达 tern",
+    "unreadable": "这个文件夹读不了，可能没有权限"
   },
   "field": {
     "required": "必填",
@@ -487,5 +488,29 @@
     "tool_missing": "没找到",
     "language_title": "语言",
     "timezone_unknown": "容器没有设置 TZ 环境变量，界面上的时间按 UTC 显示。"
+  },
+  "browse": {
+    "open": "浏览文件夹",
+    "title": "选择文件夹",
+    "where_local": "tern 容器里的文件夹。标着「卷」的是挂载进来的卷。",
+    "where_conn": "{{name}} 上的文件夹",
+    "where_snapshot": "快照 {{id}} 里的文件夹",
+    "up": "上一级",
+    "home": "主目录",
+    "root": "根目录",
+    "path": "路径",
+    "path_hint": "可以直接输入路径，按回车前往。",
+    "go": "前往",
+    "folders": "子文件夹",
+    "mount": "卷",
+    "mount_title": "挂载点：这是一个单独挂载的卷",
+    "loading": "正在读取…",
+    "empty": "这里没有子文件夹。",
+    "missing": "{{path}} 不存在，显示的是最近的上级文件夹。",
+    "truncated": "只显示前 {{n}} 个子文件夹。要找的不在里面时，直接输入路径。",
+    "home_hint": "主目录本身不能选，请进入一个子文件夹。",
+    "bad_path": "路径要以 / 开头",
+    "choose": "选择此文件夹",
+    "need_conn": "先选择连接"
   }
 }
