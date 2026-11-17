@@ -50,9 +50,11 @@ services:
       retries: 30
 
   # rclone from the image under test serves the remote directory's dav/.
+  # Directory listings are kept for 1ms, as in test/integration/compose.yaml
+  # (which says why not 0s).
   webdav:
     image: tern:${TERN_VERSION:-acceptance}
-    entrypoint: ["sh", "-c", "mkdir -p /srv/dav && exec rclone serve webdav /srv/dav --addr :8081 --user dav --pass \"$$DAV_PASS\" --dir-cache-time 0s --poll-interval 0"]
+    entrypoint: ["sh", "-c", "mkdir -p /srv/dav && exec rclone serve webdav /srv/dav --addr :8081 --user dav --pass \"$$DAV_PASS\" --dir-cache-time 1ms --poll-interval 0"]
     environment:
       DAV_PASS: ${TERN_ACC_DAV_PASS:?}
     volumes:

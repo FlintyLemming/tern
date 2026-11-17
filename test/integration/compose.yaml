@@ -39,15 +39,20 @@ services:
       retries: 30
 
   # A WebDAV server over the same remote volume, under /srv/dav. Tests write
-  # into that directory behind the server's back, so it must not cache
-  # directory listings.
+  # into that directory behind the server's back, so it may keep a directory
+  # listing for a millisecond at most: far less than the time from a test's
+  # write to the next request. Not 0s: rclone's VFS re-arms its cache
+  # cleanup at twice that time, and at 0 the cleanup walks the whole cached
+  # tree nonstop while any upload is open (and for good once an entry gets
+  # stuck), holding the directory locks every request needs. Requests then
+  # take seconds and rclone's retries of 423 Locked run out.
   webdav:
     build:
       context: ../..
       dockerfile: test/integration/runner.Dockerfile
       args:
         BASE_REGISTRY: ${TERN_BASE_REGISTRY:-docker.io/library}
-    command: ["sh", "-c", "mkdir -p /srv/dav && exec rclone serve webdav /srv/dav --addr :8081 --user dav --pass itest-dav-pass --dir-cache-time 0s --poll-interval 0"]
+    command: ["sh", "-c", "mkdir -p /srv/dav && exec rclone serve webdav /srv/dav --addr :8081 --user dav --pass itest-dav-pass --dir-cache-time 1ms --poll-interval 0"]
     volumes:
       - remote:/srv
     networks: [itest]

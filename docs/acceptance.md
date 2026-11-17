@@ -41,6 +41,10 @@
 | rclone 走外部 ssh 时的并发 | 正常。2026-11-12：`transfers` 设 4，对端同时出现的 `*.partial` 文件最多正好 4 个。 | `TestTransfersConcurrency` |
 | restic 退出码 | 与计划 4 的表一致（restic 0.19.1，2026-11-12）：仓库密码对 → 0；密码错 → 12；路径下没有仓库 → 10；有备份在跑时 `prune` 拿不到锁 → 11；有一个源读不了 → 3。 | `TestExitCodesAsDocumented` |
 
+## 其他实测发现
+
+WebDAV 推送偶发 `423 Locked`（2026-11-17 查明，来源：`TestSyncMatrix/webdav/push`、`internal/engine/rclone` 的 `TestWebDAVPushCreatesRemoteFolderFirst`）。原因有两层。一是真实的竞争：目的文件夹还不存在时，rclone（带 `--create-empty-src-dirs`）的目录遍历和每个传输都会对它发 MKCOL；给每个写请求的路径加临时锁的服务器（golang.org/x/net/webdav，即 `rclone serve webdav` 及基于它的服务器；ownCloud）让同时到的其余请求得到 423。rclone 本想把 MKCOL 的 423 当“正在创建”，但它自己的重试用完后错误被包了一层，认不出来了；目录遍历里的建目录又不像传输那样会整体重试。结果是文件全部传完，这组文件夹对却算失败。子文件夹没有这个问题：rclone 先建好子文件夹，才去列它里面要传的文件。现在 tern 在 WebDAV 推送前先单独跑一次 `rclone mkdir` 建目的文件夹。二是测试服务器自己：`--dir-cache-time 0s` 让 rclone VFS 的缓存清理在有上传时不停地遍历整棵目录树，卡住一次后空闲时也一直占着约 4 个核，每个请求慢到秒级，连会重试的 MKCOL 也会被 423 拖垮。改成 `1ms` 后，同样的 120 次复制里一次 423 都没有出现。
+
 ## QNAP 版（2026-11-17，hf-qts：TS-X53B，x86_64，QTS 5.2.11）
 
 没有自动化的端到端测试：QTS 的登录、桌面窗口和 App Center 只在真机上有。服务端和界面里与 QTS 有关的行为由单元测试覆盖（`internal/qts`、`internal/api/qts_test.go`、`web/src/lib/base.test.ts`、`web/src/shell/AppShell.test.tsx` 等），下面是真机上手工验证过的。重做时：`make qpkg QPKG_PLATFORMS=linux/amd64`，`deploy/qnap/install.sh <NAS>`。

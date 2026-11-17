@@ -179,7 +179,35 @@ func (p *planner) Plan(ctx context.Context, env engine.Env, fp model.FolderPair)
 	return parser.Plan(), nil
 }
 
+// mkdirFirst reports whether a transfer creates the remote folder in a
+// call of its own first. rclone's WebDAV backend makes a missing folder
+// from every goroutine that needs it: with --create-empty-src-dirs the
+// directory pass MKCOLs each new subfolder, and every transfer MKCOLs its
+// file's parent. Subfolders are safe, since the directory pass makes one
+// before it lists what goes into it, but the pair's own remote folder is
+// the parent of the first transfers while the directory pass makes it too.
+// Servers that lock a path for each request (golang.org/x/net/webdav, so
+// rclone serve webdav and the servers built on it; ownCloud) answer all
+// but one of those concurrent MKCOLs 423 Locked. rclone means to take a
+// 423 on MKCOL as "being created" but misses it once its own retries are
+// spent (the error is wrapped by then), and the directory pass, unlike a
+// transfer, is not retried: the pair fails after every file arrived.
+// The SFTP backend locks each directory it makes within the process.
+func (p *planner) mkdirFirst() bool {
+	return p.spec.Protocol == "webdav" && p.spec.Direction == "push"
+}
+
 func (p *planner) Transfer(ctx context.Context, env engine.Env, fp model.FolderPair, maxDelete int) (model.UnitResult, error) {
+	if p.mkdirFirst() {
+		args := MkdirArgs(fp, p.conf)
+		res, err := p.exec(ctx, env, args, nil, func(b []byte) string { return string(b) })
+		if err != nil {
+			return model.UnitResult{}, err
+		}
+		if res.ExitCode != 0 {
+			return model.UnitResult{}, failure(env, args[0], res)
+		}
+	}
 	args := Args(p.spec, fp, p.conf, p.filter, false, maxDelete)
 	parser := NewParser(env.Progress)
 	res, err := p.exec(ctx, env, args, nil, parser.Line)

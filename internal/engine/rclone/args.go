@@ -57,6 +57,14 @@ func Args(spec model.SyncSpec, p model.FolderPair, conf, filterFile string, dryR
 	return args
 }
 
+// MkdirArgs is the rclone call that creates the remote folder of a pair,
+// and any missing parents, ahead of a WebDAV push (see planner.Transfer).
+// Its timeouts and operation retries are the sync call's.
+func MkdirArgs(p model.FolderPair, conf string) []string {
+	return []string{"mkdir", remote(p.Remote), "--config", conf,
+		"--timeout", "60s", "--contimeout", "15s", "--low-level-retries", "3"}
+}
+
 // rclone's exit codes.
 const (
 	exitOK          = 0

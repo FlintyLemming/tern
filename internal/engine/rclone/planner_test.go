@@ -181,17 +181,94 @@ func TestTransferFailure(t *testing.T) {
 	}
 }
 
+// newWebDAVPlanner is a planner on a WebDAV connection whose password
+// `rclone obscure` turns into OBSCURED; steps follow that first call.
+func newWebDAVPlanner(t *testing.T, s model.SyncSpec, steps ...faketool.Step) *plannerFixture {
+	t.Helper()
+	s.Protocol = "webdav"
+	f := newPlanner(t, s, append([]faketool.Step{{Stdout: "OBSCURED\n"}}, steps...)...)
+	f.acc.kind, f.acc.pass = model.ConnWebDAV, "hunter2-pass"
+	return f
+}
+
+// A WebDAV push creates the remote folder in a call of its own before the
+// copy. Within one copy, rclone's directory pass and its transfers would
+// all MKCOL a missing remote folder at once, and a server that locks a
+// path for each request (golang.org/x/net/webdav, ownCloud) answers the
+// losers 423 Locked; the directory pass does not retry that.
+func TestWebDAVPushCreatesRemoteFolderFirst(t *testing.T) {
+	for _, mode := range []string{"keep", "mirror"} {
+		f := newWebDAVPlanner(t, spec("push", mode))
+		f.prepare()
+		if _, err := f.pl.Transfer(context.Background(), f.env, pairA, -1); err != nil {
+			t.Fatal(err)
+		}
+		calls := f.tool.Calls()
+		if len(calls) != 3 || calls[0].Args[0] != "obscure" {
+			t.Fatalf("%s: calls = %+v", mode, calls)
+		}
+		mkdir := calls[1]
+		if mkdir.Args[0] != "mkdir" || mkdir.Args[1] != "remote:/srv/a" ||
+			!mkdir.Has("--config", filepath.Join(f.env.Dir.Path, "rclone.conf")) ||
+			!mkdir.Has("--timeout", "60s") || !mkdir.Has("--contimeout", "15s") || !mkdir.Has("--low-level-retries", "3") {
+			t.Errorf("%s: mkdir call = %q", mode, mkdir.Args)
+		}
+		if sub := map[string]string{"keep": "copy", "mirror": "sync"}[mode]; calls[2].Args[0] != sub {
+			t.Errorf("%s: then %q, want %s", mode, calls[2].Args, sub)
+		}
+		if !strings.Contains(f.log.String(), "$ rclone mkdir remote:/srv/a ") {
+			t.Errorf("%s: the mkdir call is not in the log:\n%s", mode, f.log.String())
+		}
+	}
+}
+
+// A pull writes into a local folder, and rclone's SFTP backend makes each
+// directory once per process: neither needs the separate call.
+func TestOnlyWebDAVPushCreatesRemoteFolder(t *testing.T) {
+	for _, c := range []struct {
+		protocol, direction string
+	}{{"webdav", "pull"}, {"sftp", "push"}, {"sftp", "pull"}} {
+		var f *plannerFixture
+		if c.protocol == "webdav" {
+			f = newWebDAVPlanner(t, spec(c.direction, "keep"))
+		} else {
+			f = newPlanner(t, spec(c.direction, "keep"))
+		}
+		f.prepare()
+		if _, err := f.pl.Transfer(context.Background(), f.env, pairA, -1); err != nil {
+			t.Fatal(err)
+		}
+		for _, call := range f.tool.Calls() {
+			if call.Args[0] == "mkdir" {
+				t.Errorf("%s %s: %q", c.protocol, c.direction, call.Args)
+			}
+		}
+	}
+}
+
+// A remote folder that cannot be created fails the pair the way the copy
+// would have, and nothing is copied.
+func TestWebDAVMkdirFailure(t *testing.T) {
+	f := newWebDAVPlanner(t, spec("push", "keep"), faketool.Step{Exit: 5,
+		Stderr: "2026/11/17 09:12:55 ERROR : Attempt 1/1 failed with 1 errors and: connection refused\n"})
+	f.prepare()
+	_, err := f.pl.Transfer(context.Background(), f.env, pairA, -1)
+	if model.KindOf(err) != model.KindNetwork || !strings.Contains(err.Error(), "rclone mkdir failed (exit 5)") {
+		t.Errorf("Transfer = %v", err)
+	}
+	if calls := f.tool.Calls(); len(calls) != 2 {
+		t.Errorf("calls = %+v", calls)
+	}
+}
+
 // What rclone says when it fails ends up in the run record, which is not
 // behind the log's redactor.
 func TestFailureMessageRedacted(t *testing.T) {
-	s := spec("push", "keep")
-	s.Protocol = "webdav"
-	f := newPlanner(t, s, faketool.Step{Stdout: "OBSCURED\n"},
+	f := newWebDAVPlanner(t, spec("push", "keep"), faketool.Step{},
 		faketool.Step{Exit: 1, Stderr: `{"level":"error","msg":"auth failed for hunter2-pass"}` + "\n"})
-	f.acc.kind, f.acc.pass = model.ConnWebDAV, "hunter2-pass"
 	f.prepare()
 	_, err := f.pl.Transfer(context.Background(), f.env, pairA, -1)
-	if err == nil || strings.Contains(err.Error(), "hunter2-pass") {
+	if err == nil || !strings.HasPrefix(err.Error(), "rclone copy failed") || strings.Contains(err.Error(), "hunter2-pass") {
 		t.Errorf("Transfer = %v", err)
 	}
 }
