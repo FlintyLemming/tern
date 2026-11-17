@@ -73,6 +73,11 @@ type harness struct {
 	check func(connID string) error
 	// notMounted makes every path look like it is off the mounted volumes.
 	notMounted bool
+	// cfg is the process configuration restart builds the API with; the
+	// directories are filled in by restart.
+	cfg config.Config
+	// qts stands in for QTS's session check when set.
+	qts *fakeQTS
 	// mounts is what the API is told about /data and /secrets at startup.
 	mounts sysinfo.Mounts
 	// reg is the engine registry of the runner and the API; a test can
@@ -191,8 +196,15 @@ func (h *harness) restart() {
 		recCancel()
 	}
 
+	cfg := h.cfg
+	cfg.SecretsDir, cfg.DataDir, cfg.RuntimeDir = h.secrets, h.dataDir, h.runtimeDir
+	var qtsCheck QTSChecker
+	if h.qts != nil {
+		qtsCheck = h.qts
+	}
 	h.api = New(Deps{
-		Cfg:       config.Config{SecretsDir: h.secrets, DataDir: h.dataDir, RuntimeDir: h.runtimeDir},
+		QTS:       qtsCheck,
+		Cfg:       cfg,
 		Access:    harnessAccess{h: h, real: access.Opener{Store: h.st, Vault: h.vault}},
 		ResticBin: h.restic.Bin,
 		Mounted:   func(string) (bool, error) { return !h.notMounted, nil },
@@ -334,7 +346,7 @@ func wantField(t *testing.T, e map[string]any, field string) {
 
 func (h *harness) status() map[string]any {
 	h.t.Helper()
-	w := h.do("GET", "/api/v1/status", nil)
+	w := h.do("GET", h.cfg.BasePath+"/api/v1/status", nil)
 	if w.Code != http.StatusOK {
 		h.t.Fatalf("status = %d %s", w.Code, w.Body)
 	}

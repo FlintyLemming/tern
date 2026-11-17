@@ -63,6 +63,7 @@
     "already_setup": "这个节点已经初始化过了",
     "data_not_mounted": "/data 没有挂载到宿主机，在 compose 文件里加上 ./data:/data 后重启",
     "secrets_not_mounted": "/secrets 没有挂载，加上 ./secrets:/secrets 后重启，或者改用口令解锁",
+    "qts_admin_required": "要先以管理员身份登录 QTS，才能初始化 tern",
     "vault_locked": "保险箱已锁定，请先解锁",
     "vault_unavailable": "保险箱打不开，检查 secrets 目录",
     "host_key_required": "请先获取并确认对端指纹",
@@ -109,6 +110,7 @@
   "shell": {
     "menu": "菜单",
     "logout": "退出登录",
+    "qts_user": "已通过 QTS 登录：{{user}}",
     "zone": "时间按节点时区 {{zone}} 显示",
     "status_failed": "连不上 tern"
   },
@@ -155,6 +157,7 @@
   },
   "login": {
     "title": "登录",
+    "qts_none": "没有检测到 QTS 管理员登录。在 QTS 里重新登录后再打开 tern，或者在下面输入 tern 的管理员密码。",
     "password": "管理员密码",
     "submit": "登录",
     "wrong": "密码不对",
@@ -362,7 +365,8 @@
     "recovery_create": "确认并创建",
     "cmd_title": "等价命令行",
     "cmd_desc": "不用 tern 时照着执行，效果相同。凭据不在这里，要自己提供。",
-    "repo_password_source": "仓库密码从哪来"
+    "repo_password_source": "仓库密码从哪来",
+    "local_placeholder": "/data/…"
   },
   "overview": {
     "title": "概览",
@@ -382,7 +386,9 @@
     "title": "BBR",
     "active": "BBR 已生效",
     "supported": "内核支持 BBR，但当前算法是 {{current}}。在 compose 文件的 sysctls 里加上下面这行，然后重建容器",
+    "supported_code": "net.ipv4.tcp_congestion_control: bbr",
     "missing": "宿主机内核没有加载 tcp_bbr 模块。在宿主机执行下面的命令后重建容器",
+    "missing_code": "modprobe tcp_bbr",
     "note": "BBR 只对本机发出的数据起作用，也就是推送和备份。拉取要看对端自己的设置。"
   },
   "run": {

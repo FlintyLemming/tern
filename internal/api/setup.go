@@ -49,18 +49,27 @@ func (a *API) handleStatus(w http.ResponseWriter, r *http.Request) {
 		internalError(w, r, err)
 		return
 	}
-	_, authed, err := a.lookupSession(r)
+	s, authed, err := a.lookupSession(r)
 	if err != nil {
 		internalError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	body := map[string]any{
 		"version":        a.d.Version,
 		"setup_required": !done,
 		"vault_state":    a.d.Vault.State(),
 		"authenticated":  authed,
 		"mounts":         a.d.Mounts,
-	})
+		"platform":       a.d.Cfg.Platform,
+	}
+	if authed {
+		body["signed_in_via"] = "password"
+		if s.qtsUser != "" {
+			body["signed_in_via"] = "qts"
+			body["qts_user"] = s.qtsUser
+		}
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
 // Refusals for writes that would land in the container's own layer.
@@ -83,6 +92,21 @@ func (a *API) handleSetup(w http.ResponseWriter, r *http.Request) {
 	}
 	if !readJSON(w, r, &req) {
 		return
+	}
+	var qtsSession session
+	if a.d.QTS != nil {
+		// tern is reachable through QTS's port without signing in to QTS;
+		// only a QTS administrator may claim a new node.
+		s, ok, err := a.lookupQTS(r)
+		if err != nil {
+			internalError(w, r, err)
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "qts_admin_required", "sign in to QTS as an administrator to set up tern", nil)
+			return
+		}
+		qtsSession = s
 	}
 	if !a.d.Mounts.Data {
 		writeDataNotMounted(w)
@@ -166,6 +190,12 @@ func (a *API) handleSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.syncPaused() // the vault exists and is open now: scheduling may begin
+	if qtsSession.qtsUser != "" {
+		// The QTS sign-in carries on; a tern session of its own would
+		// outlive signing out of QTS.
+		writeJSON(w, http.StatusCreated, map[string]string{"csrf_token": qtsSession.csrf})
+		return
+	}
 	a.startSession(w, r, http.StatusCreated)
 }
 
@@ -176,7 +206,7 @@ func (a *API) startSession(w http.ResponseWriter, r *http.Request, status int) {
 		internalError(w, r, err)
 		return
 	}
-	setSessionCookie(w, r, token)
+	a.setSessionCookie(w, r, token)
 	writeJSON(w, status, map[string]string{"csrf_token": csrf})
 }
 

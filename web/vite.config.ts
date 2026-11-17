@@ -5,6 +5,9 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // Relative, so the build works below any prefix: the server points
+  // index.html at where it serves tern (TERN_BASE_PATH).
+  base: './',
   build: {
     outDir: 'dist',
     assetsDir: 'assets',

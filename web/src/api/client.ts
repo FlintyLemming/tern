@@ -1,4 +1,5 @@
 // The only way the interface talks to tern: JSON over /api/v1.
+import { appPath, url } from '../lib/base'
 
 export class ApiError extends Error {
   status: number
@@ -27,7 +28,7 @@ export function hasCsrf(): boolean {
   return csrf !== ''
 }
 
-let navigate: (to: string) => void = (to) => window.location.assign(to)
+let navigate: (to: string) => void = (to) => window.location.assign(url(to))
 let onUnauthorized: () => void = () => {}
 
 // configureClient wires the client to the router (navigate) and the query
@@ -41,12 +42,12 @@ const PUBLIC_PATHS = ['/login', '/setup']
 
 // loginPath is where an expired session goes, keeping the page to come back to.
 export function loginPath(): string {
-  const here = window.location.pathname + window.location.search
+  const here = appPath(window.location.pathname) + window.location.search
   return here === '/' ? '/login' : `/login?next=${encodeURIComponent(here)}`
 }
 
 function sessionExpired() {
-  if (PUBLIC_PATHS.includes(window.location.pathname)) return
+  if (PUBLIC_PATHS.includes(appPath(window.location.pathname))) return
   csrf = ''
   onUnauthorized()
   navigate(loginPath())
@@ -62,7 +63,7 @@ export async function request<T>(method: string, path: string, body?: unknown): 
   }
   let res: Response
   try {
-    res = await fetch(path, { method, headers, body: payload, credentials: 'same-origin', cache: 'no-store' })
+    res = await fetch(url(path), { method, headers, body: payload, credentials: 'same-origin', cache: 'no-store' })
   } catch {
     throw new ApiError(0, 'network', 'the request did not reach tern')
   }

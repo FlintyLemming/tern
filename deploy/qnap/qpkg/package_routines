@@ -1,0 +1,10 @@
+######################################################################
+# tern's package routines (sourced by the QDK installer)
+######################################################################
+
+# data and secrets are not in the package: an upgrade leaves them alone.
+pkg_post_install(){
+	$CMD_MKDIR -p "$SYS_QPKG_DIR/data" "$SYS_QPKG_DIR/secrets"
+	$CMD_CHMOD 700 "$SYS_QPKG_DIR/data" "$SYS_QPKG_DIR/secrets"
+	$CMD_CHMOD 755 "$SYS_QPKG_DIR/tern.sh" "$SYS_QPKG_DIR"/bin/*
+}

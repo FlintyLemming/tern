@@ -79,7 +79,7 @@ func TestUnknownAPIIs404JSON(t *testing.T) {
 func TestStaticHasCSP(t *testing.T) {
 	a := staticAPI(t)
 	for _, p := range []string{"/", "/tasks/abc", "/assets/app.js"} {
-		if got := get(a, p).Header().Get("Content-Security-Policy"); got != csp {
+		if got := get(a, p).Header().Get("Content-Security-Policy"); got != cspDocker {
 			t.Fatalf("GET %s CSP = %q", p, got)
 		}
 	}

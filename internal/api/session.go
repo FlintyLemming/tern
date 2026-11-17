@@ -26,7 +26,7 @@ func (a *API) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// before the first failure is counted.
 	a.loginMu.Lock()
 	defer a.loginMu.Unlock()
-	ip := clientIP(r)
+	ip := a.clientIP(r)
 
 	if ok, wait := a.d.Limiter.Allow(ip, a.d.Now()); !ok {
 		w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
@@ -48,11 +48,17 @@ func (a *API) handleLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) handleLogout(w http.ResponseWriter, r *http.Request) {
-	if err := a.d.Sessions.Delete(r.Context(), sessionFrom(r).token); err != nil {
+	s := sessionFrom(r)
+	if s.token == "" {
+		// A QTS sign-in: QTS owns that session; signing out is done there.
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if err := a.d.Sessions.Delete(r.Context(), s.token); err != nil {
 		internalError(w, r, err)
 		return
 	}
-	clearSessionCookie(w, r)
+	a.clearSessionCookie(w, r)
 	w.WriteHeader(http.StatusNoContent)
 }
 

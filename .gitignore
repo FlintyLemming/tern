@@ -6,3 +6,4 @@ node_modules/
 /web/*.tsbuildinfo
 /test/e2e/test-results/
 /test/e2e/playwright-report/
+/build/

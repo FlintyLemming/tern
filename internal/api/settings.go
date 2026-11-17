@@ -128,7 +128,7 @@ func (a *API) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 func (a *API) confirmPassword(w http.ResponseWriter, r *http.Request, password string) bool {
 	a.loginMu.Lock()
 	defer a.loginMu.Unlock()
-	ip := clientIP(r)
+	ip := a.clientIP(r)
 	if ok, wait := a.d.Limiter.Allow(ip, a.d.Now()); !ok {
 		w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
 		writeError(w, http.StatusTooManyRequests, "rate_limited", "too many wrong passwords; try again later", nil)
@@ -180,7 +180,7 @@ func (a *API) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		internalError(w, r, err)
 		return
 	}
-	clearSessionCookie(w, r)
+	a.clearSessionCookie(w, r)
 	w.WriteHeader(http.StatusNoContent)
 }
 

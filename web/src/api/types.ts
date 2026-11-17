@@ -25,12 +25,19 @@ export interface Mounts {
   secrets: boolean
 }
 
+export type Platform = 'docker' | 'qts'
+
 export interface AppStatus {
   version: string
   setup_required: boolean
   vault_state: VaultState
   authenticated: boolean
   mounts?: Mounts
+  platform?: Platform
+  // how this browser is signed in, when authenticated: tern's own password
+  // or, on QTS, a QTS administrator session (qts_user)
+  signed_in_via?: 'password' | 'qts'
+  qts_user?: string
 }
 
 export interface CsrfToken {

@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ApiError, request, setCsrf } from '../../api/client'
 import { errorText } from '../../api/errors'
+import { useKnownStatus } from '../../api/queries'
 import type { CsrfToken } from '../../api/types'
 import { markStatus } from '../../lib/session'
 import { AuthCard } from '../../shell/AuthCard'
@@ -16,6 +17,7 @@ import { SecretInput } from '../../ui/Input'
 export function LoginPage() {
   const { t } = useTranslation()
   const qc = useQueryClient()
+  const onQTS = useKnownStatus()?.platform === 'qts'
   const [password, setPassword] = useState('')
   const [until, setUntil] = useState(0) // rate limited until this instant (ms)
   const [now, setNow] = useState(() => Date.now())
@@ -61,6 +63,12 @@ export function LoginPage() {
 
   return (
     <AuthCard title={t('login.title')}>
+      {/* On QTS this page only shows when QTS did not vouch for the visitor. */}
+      {onQTS ? (
+        <div className="mb-4">
+          <Banner tone="info">{t('login.qts_none')}</Banner>
+        </div>
+      ) : null}
       <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
         <Field label={t('login.password')} error={error}>
           <SecretInput value={password} onChange={(e) => setPassword(e.target.value)} autoFocus />

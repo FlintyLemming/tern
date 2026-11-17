@@ -184,7 +184,8 @@ func startWithStore(ctx context.Context, cfg config.Config, version string, st *
 			slog.Error("http server stopped", "err", err)
 		}
 	}()
-	slog.Info("tern started", "version", version, "addr", a.Addr(), "tls", tlsCfg != nil, "vault_state", string(state))
+	slog.Info("tern started", "version", version, "addr", a.Addr(), "tls", tlsCfg != nil, "vault_state", string(state),
+		"platform", cfg.Platform, "base_path", cfg.BasePath)
 	return a, nil
 }
 

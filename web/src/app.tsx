@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { BrowserRouter, Link, Route, Routes, useNavigate } from 'react-router'
 import { configureClient } from './api/client'
 import { forgetSession } from './api/queries'
+import { routerBase } from './lib/base'
 import { createQueryClient } from './api/queryClient'
 import { ConnectionsPage } from './pages/connections/ConnectionsPage'
 import { LoginPage } from './pages/login/LoginPage'
@@ -50,7 +51,7 @@ function NotFound() {
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <BrowserRouter basename={routerBase() || undefined}>
         <Toaster>
           <ClientWiring />
           <Routes>

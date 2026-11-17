@@ -20,12 +20,12 @@ export function BBRCard() {
           ) : bbr.supported ? (
             <>
               <p>{t('bbr.supported', { current: bbr.current })}</p>
-              <CodeBlock text="net.ipv4.tcp_congestion_control: bbr" copyable />
+              <CodeBlock text={t('bbr.supported_code')} copyable />
             </>
           ) : (
             <>
               <p>{t('bbr.missing')}</p>
-              <CodeBlock text="modprobe tcp_bbr" copyable />
+              <CodeBlock text={t('bbr.missing_code')} copyable />
             </>
           )}
         </div>

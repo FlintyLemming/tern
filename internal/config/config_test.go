@@ -14,7 +14,7 @@ func TestLoadDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Config{Listen: ":8080", DataDir: "/data", SecretsDir: "/secrets", RuntimeDir: "/dev/shm/tern"}
+	want := Config{Listen: ":8080", DataDir: "/data", SecretsDir: "/secrets", RuntimeDir: "/dev/shm/tern", Platform: PlatformDocker}
 	if got != want {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}
@@ -32,7 +32,7 @@ func TestLoadOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Config{Listen: "127.0.0.1:9000", DataDir: "/d", SecretsDir: "/s", RuntimeDir: "/r", TLSCert: "/c.pem", TLSKey: "/k.pem"}
+	want := Config{Listen: "127.0.0.1:9000", DataDir: "/d", SecretsDir: "/s", RuntimeDir: "/r", TLSCert: "/c.pem", TLSKey: "/k.pem", Platform: PlatformDocker}
 	if got != want {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}
@@ -58,5 +58,38 @@ func TestLoadAllowUnmounted(t *testing.T) {
 		if got.AllowUnmounted != want {
 			t.Errorf("TERN_ALLOW_UNMOUNTED=%q: AllowUnmounted = %v, want %v", v, got.AllowUnmounted, want)
 		}
+	}
+}
+
+func TestLoadBasePath(t *testing.T) {
+	for in, want := range map[string]string{"": "", "/": "", "/tern": "/tern", "/tern/": "/tern", "/apps/tern-2": "/apps/tern-2", "/a.b~c_d": "/a.b~c_d"} {
+		got, err := Load(env(map[string]string{"TERN_BASE_PATH": in}))
+		if err != nil || got.BasePath != want {
+			t.Errorf("TERN_BASE_PATH=%q: BasePath = %q, %v; want %q", in, got.BasePath, err, want)
+		}
+	}
+	for _, in := range []string{"tern", "/te rn", "/a//b", "/..", "/./x", "/x\"y", "/x?y", "/%2e"} {
+		if _, err := Load(env(map[string]string{"TERN_BASE_PATH": in})); err == nil || !strings.Contains(err.Error(), "TERN_BASE_PATH") {
+			t.Errorf("TERN_BASE_PATH=%q: err = %v, want one naming TERN_BASE_PATH", in, err)
+		}
+	}
+}
+
+func TestLoadPlatform(t *testing.T) {
+	got, err := Load(env(map[string]string{"TERN_PLATFORM": "qts"}))
+	if err != nil || got.Platform != PlatformQTS || got.QTSAuthURL != DefaultQTSAuthURL {
+		t.Fatalf("qts: got %+v, %v", got, err)
+	}
+	got, err = Load(env(map[string]string{"TERN_PLATFORM": "qts", "TERN_QTS_AUTH_URL": "http://127.0.0.1:1/x"}))
+	if err != nil || got.QTSAuthURL != "http://127.0.0.1:1/x" {
+		t.Fatalf("qts with URL: got %+v, %v", got, err)
+	}
+	// The URL means nothing outside QTS.
+	got, err = Load(env(map[string]string{"TERN_QTS_AUTH_URL": "http://127.0.0.1:1/x"}))
+	if err != nil || got.Platform != PlatformDocker || got.QTSAuthURL != "" {
+		t.Fatalf("docker with URL: got %+v, %v", got, err)
+	}
+	if _, err := Load(env(map[string]string{"TERN_PLATFORM": "synology"})); err == nil || !strings.Contains(err.Error(), "TERN_PLATFORM") {
+		t.Fatalf("unknown platform: err = %v", err)
 	}
 }

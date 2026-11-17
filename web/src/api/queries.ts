@@ -1,4 +1,5 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { applyPlatform } from '../i18n'
 import { request } from './client'
 import type {
   AppStatus,
@@ -50,7 +51,18 @@ const enc = encodeURIComponent
 
 // ---- status, session, system, settings
 
-export const useStatus = () => useQuery({ queryKey: qk.status, queryFn: () => request<AppStatus>('GET', '/api/v1/status') })
+// The wording follows the platform before anything shows the status.
+export const fetchStatus = async () => {
+  const s = await request<AppStatus>('GET', '/api/v1/status')
+  applyPlatform(s.platform)
+  return s
+}
+
+export const useStatus = () => useQuery({ queryKey: qk.status, queryFn: fetchStatus })
+
+// useKnownStatus is the status the gate already fetched, kept current, for
+// parts of a page that only read it: mounting them asks the server nothing.
+export const useKnownStatus = () => useQuery({ queryKey: qk.status, queryFn: fetchStatus, refetchOnMount: false }).data
 
 export const useSystem = () =>
   useQuery({ queryKey: qk.system, queryFn: () => request<SystemInfo>('GET', '/api/v1/system'), staleTime: 60_000 })
@@ -285,8 +297,11 @@ export const useRestore = () =>
       }),
   })
 
-// forgetSession drops everything cached for the session that just ended.
+// forgetSession drops everything cached for the session that just ended,
+// and asks whether another one still holds: on QTS, ending tern's own
+// session leaves the QTS sign-in, and the gate brings the visitor back in.
 export function forgetSession(qc: QueryClient) {
   qc.setQueryData<AppStatus>(qk.status, (s) => (s ? { ...s, authenticated: false } : s))
   qc.removeQueries({ predicate: (q) => q.queryKey[0] !== 'status' })
+  void qc.invalidateQueries({ queryKey: qk.status })
 }

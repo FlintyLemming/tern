@@ -42,7 +42,7 @@ export function BackupFields({
               <Field label={t('task.source')} error={fe(`backup.sources[${i}]`)} className="flex flex-col gap-1 [&>label]:sr-only">
                 <Input
                   value={src}
-                  placeholder="/data/…"
+                  placeholder={t('task.local_placeholder')}
                   spellCheck={false}
                   onChange={(e) => set({ sources: sources.map((s, j) => (j === i ? e.target.value : s)) })}
                 />

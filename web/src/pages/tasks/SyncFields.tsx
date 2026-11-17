@@ -64,7 +64,7 @@ export function SyncFields({ s, set, conns }: { s: SyncSpec; set: (p: Partial<Sy
                 <Input
                   value={p.local}
                   spellCheck={false}
-                  placeholder="/data/…"
+                  placeholder={t('task.local_placeholder')}
                   onChange={(e) => set({ pairs: pairs.map((x, j) => (j === i ? { ...x, local: e.target.value } : x)) })}
                 />
               </Field>

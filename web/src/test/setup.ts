@@ -1,7 +1,8 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
 import { afterEach, beforeEach } from 'vitest'
-import i18n from '../i18n'
+import i18n, { applyPlatform } from '../i18n'
+import { setBase } from '../lib/base'
 
 // Radix primitives use pointer capture and scrollIntoView, which jsdom lacks.
 Element.prototype.hasPointerCapture ??= () => false
@@ -21,4 +22,6 @@ beforeEach(async () => {
 afterEach(() => {
   cleanup()
   localStorage.clear()
+  applyPlatform('docker') // tests on the QNAP wording switch back
+  setBase('/')
 })

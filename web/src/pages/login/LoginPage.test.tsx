@@ -78,3 +78,21 @@ it('login: a password does not linger in memory', async () => {
   await screen.findByText('密码不对')
   await waitFor(() => expect(inMutationCache(qc, 'almost-the-password')).toBe(false))
 })
+
+it('login on QTS: says why it is asked at all', async () => {
+  fakeFetch({ 'GET /api/v1/status': { body: { ...out.body, platform: 'qts' } } })
+  renderRoutes(
+    <Route element={<AuthGate />}>
+      <Route path="/login" element={<LoginPage />} />
+    </Route>,
+    '/login',
+  )
+  expect(await screen.findByText(/没有检测到 QTS 管理员登录/)).toBeInTheDocument()
+  expect(screen.getByLabelText('管理员密码')).toBeInTheDocument() // the fallback stays
+})
+
+it('login elsewhere: no QTS hint', async () => {
+  renderLogin('/login', { status: 401, body: {} })
+  await screen.findByLabelText('管理员密码')
+  expect(screen.queryByText(/QTS/)).toBeNull()
+})

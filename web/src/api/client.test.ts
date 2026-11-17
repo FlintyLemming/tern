@@ -1,5 +1,6 @@
 import { afterEach, beforeEach } from 'vitest'
 import { ApiError, configureClient, request, setCsrf } from './client'
+import { setBase } from '../lib/base'
 import { fakeFetch } from '../test/fetch'
 
 beforeEach(() => {
@@ -76,4 +77,33 @@ it('turns a network failure into ApiError code network', async () => {
 it('returns undefined for 204', async () => {
   fakeFetch({ 'DELETE /api/v1/tasks/a': { status: 204 } })
   await expect(request('DELETE', '/api/v1/tasks/a')).resolves.toBeUndefined()
+})
+
+describe('below a base path (QNAP package)', () => {
+  beforeEach(() => setBase('/tern/'))
+
+  it('sends requests below it', async () => {
+    const f = fakeFetch({ 'GET /tern/api/v1/tasks': { body: [] } })
+    await request('GET', '/api/v1/tasks')
+    expect(f.calls[0].path).toBe('/tern/api/v1/tasks')
+  })
+
+  it('sends an expired session to the login page with the in-app path', async () => {
+    const seen: string[] = []
+    configureClient({ navigate: (to) => seen.push(to), onUnauthorized: () => {} })
+    fakeFetch({ 'GET /tern/api/v1/tasks/abc': { status: 401, body: { error: { code: 'unauthorized', message: 'login required' } } } })
+    window.history.pushState({}, '', '/tern/tasks/abc')
+    await fail(request('GET', '/api/v1/tasks/abc'))
+    // the router adds the base itself
+    expect(seen).toEqual(['/login?next=%2Ftasks%2Fabc'])
+  })
+
+  it('stays put on a 401 from the login page itself', async () => {
+    const seen: string[] = []
+    configureClient({ navigate: (to) => seen.push(to), onUnauthorized: () => {} })
+    fakeFetch({ 'POST /tern/api/v1/login': { status: 401, body: { error: { code: 'unauthorized', message: 'wrong password' } } } })
+    window.history.pushState({}, '', '/tern/login')
+    await fail(request('POST', '/api/v1/login', { password: 'x' }))
+    expect(seen).toEqual([])
+  })
 })

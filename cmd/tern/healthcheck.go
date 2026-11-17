@@ -32,7 +32,7 @@ func healthcheck(getenv func(string) string) int {
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // loopback only
 	}
 	client := &http.Client{Transport: transport, Timeout: 4 * time.Second}
-	resp, err := client.Get(scheme + "://" + net.JoinHostPort(host, port) + "/api/v1/status")
+	resp, err := client.Get(scheme + "://" + net.JoinHostPort(host, port) + cfg.BasePath + "/api/v1/status")
 	if err != nil {
 		return 1
 	}

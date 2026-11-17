@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import { request } from '../api/client'
 import { connectEvents } from '../api/events'
-import { forgetSession } from '../api/queries'
+import { forgetSession, useKnownStatus } from '../api/queries'
 import { cx } from '../lib/cx'
 import { useNodeZone } from './NodeTime'
 
@@ -49,6 +49,7 @@ function SidebarFoot() {
   const zone = useNodeZone()
   const qc = useQueryClient()
   const navigate = useNavigate()
+  const status = useKnownStatus()
   const logout = async () => {
     try {
       await request('POST', '/api/v1/logout')
@@ -60,10 +61,15 @@ function SidebarFoot() {
   return (
     <div className="mt-auto flex flex-col gap-2 px-4 pt-4 text-caption text-ink-muted">
       {zone ? <p>{t('shell.zone', { zone })}</p> : null}
-      <button type="button" onClick={() => void logout()} className="inline-flex items-center gap-2 self-start text-ink-secondary hover:text-ink">
-        <LogOut aria-hidden className="size-4" />
-        {t('shell.logout')}
-      </button>
+      {status?.signed_in_via === 'qts' ? (
+        // QTS owns this sign-in; signing out happens there
+        <p>{t('shell.qts_user', { user: status.qts_user ?? '' })}</p>
+      ) : (
+        <button type="button" onClick={() => void logout()} className="inline-flex items-center gap-2 self-start text-ink-secondary hover:text-ink">
+          <LogOut aria-hidden className="size-4" />
+          {t('shell.logout')}
+        </button>
+      )}
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { createElement, type ReactNode } from 'react'
+import { setBase } from '../lib/base'
 import { connectEvents } from './events'
 import { qk, useRunProgress } from './queries'
 
@@ -50,8 +51,15 @@ function seed(qc: QueryClient, key: readonly unknown[]) {
 }
 
 it('connects to the event stream', () => {
-  const { es } = setup()
+  const { es, stop } = setup()
   expect(es().url).toBe('/api/v1/events')
+  stop()
+})
+
+it('connects below the base path', () => {
+  setBase('/tern/')
+  const { es } = setup()
+  expect(es().url).toBe('/tern/api/v1/events')
 })
 
 it('invalidates on run.updated', () => {

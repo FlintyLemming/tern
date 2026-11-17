@@ -40,3 +40,19 @@
 | WebDAV 服务器对修改时间的支持 | 对测试用的服务器（`rclone serve webdav`）保留得住：2026-11-12 同一任务不改源再跑一次，传输 0 个文件。其他 WebDAV 服务器（NAS 自带的、nginx、Apache）未测。 | `TestSecondRunTransfersNothing` 的日志 |
 | rclone 走外部 ssh 时的并发 | 正常。2026-11-12：`transfers` 设 4，对端同时出现的 `*.partial` 文件最多正好 4 个。 | `TestTransfersConcurrency` |
 | restic 退出码 | 与计划 4 的表一致（restic 0.19.1，2026-11-12）：仓库密码对 → 0；密码错 → 12；路径下没有仓库 → 10；有备份在跑时 `prune` 拿不到锁 → 11；有一个源读不了 → 3。 | `TestExitCodesAsDocumented` |
+
+## QNAP 版（2026-11-17，hf-qts：TS-X53B，x86_64，QTS 5.2.11）
+
+没有自动化的端到端测试：QTS 的登录、桌面窗口和 App Center 只在真机上有。服务端和界面里与 QTS 有关的行为由单元测试覆盖（`internal/qts`、`internal/api/qts_test.go`、`web/src/lib/base.test.ts`、`web/src/shell/AppShell.test.tsx` 等），下面是真机上手工验证过的。重做时：`make qpkg QPKG_PLATFORMS=linux/amd64`，`deploy/qnap/install.sh <NAS>`。
+
+| 项目 | 结果 |
+|---|---|
+| 安装、升级 | 直接运行 .qpkg（`install.sh` 的做法）可以装和升级，升级保留 `data`、`secrets`、`tern.conf`，密钥文件模式下升级后自动解锁。`qpkg_cli -m … -A 1` 在签名检查处停下：App Center 里没打开“允许安装没有有效数字签名的应用程序”时，不签名的包只能这样装。 |
+| 窗口 | 主菜单里有 tern 图标，点开是 QTS 桌面窗口（标题栏、最小化、最大化、关闭、任务栏标签），不开新网页。QTS 给窗口加载的是 `/tern?v=<版本>&…`，即 `Proxy_Path`，不是 `WebUI`。 |
+| QTS 转发 | QTS 只在 App Center 启用应用时往 `/etc/app_proxy.conf` 写 `ProxyPass "/tern" "http://127.0.0.1:17180/tern/" retry=0`（端口取 `Web_Port`），停用时换成指向“应用已停用”页面的 `RewriteRule`，改 `Proxy_Path` 后旧行不删。所以 `tern.sh start` 自己检查并修正这一行，再平滑重载 QTS 的 Apache。清空这个文件（重启后就是这样）后访问 `/tern` 是 404，`tern.sh start` 后这一行补回来。目标末尾的 `/` 让 tern 收到 `/tern//api/…`，tern 就地按规范路径处理，不重定向。HTTP 5000 和 HTTPS 5001 都通。 |
+| 登录 | 登录着 QTS 的管理员打开窗口直接进入，状态里 `signed_in_via: qts`，侧栏显示“已通过 QTS 登录”而没有退出按钮；初始化只接受 QTS 管理员。退出 tern 自己的密码会话后留在应用里，回到 QTS 登录。写操作带 CSRF 令牌（由 QTS 会话号派生）。 |
+| 事件流 | 经 QTS 的 Apache 不缓冲、不压缩：`: ok` 约 1 秒内到达，运行记录在窗口里实时更新。 |
+| 自带工具 | restic 0.19.1、rclone 1.76.0、静态链接的 rsync 3.5.2 和 OpenSSH 10.3p1 都在 QTS 上直接运行。通过一个临时 sshd 容器（只监听 NAS 的回环地址，测完删掉）：备份 50 MiB 成功，随后的自动清理和校验成功，恢复出的文件与源逐字节相同（含中文文件名和硬链接）；rsync 推送成功，对端保留硬链接；SFTP 拉取成功，与源相同。 |
+| 工作目录 | 第一次跑 rsync 失败：`rsync: [Receiver] getcwd(): No such file or directory`。tern 继承了安装程序的临时目录（`.qpkg/.tmp-tern`），装完被删了。`tern.sh` 现在先 `cd /`；由安装程序启动后，tern 和守护进程的工作目录都是 `/`。 |
+| 时区、BBR | 时区取 QTS 的设置（Asia/Hong_Kong），界面按它显示。内核有 `reno bbr cubic`，当前是 cubic，概览页的 BBR 卡片给出 `sysctl -w` 的命令。 |
+| 未验证 | arm_64 包只构建过，没在 ARM 机型上装过；没有真的重启 NAS；App Center 正常途径的安装（打开不签名开关后手动安装）。 |

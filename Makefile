@@ -8,7 +8,7 @@ GOPROXY_IMAGE ?= $(or $(TERN_GOPROXY),https://proxy.golang.org$(comma)direct)
 comma := ,
 PLATFORMS ?= linux/amd64,linux/arm64
 
-.PHONY: test vet web build itest acceptance acceptance-host e2e image image-test
+.PHONY: test vet web build itest acceptance acceptance-host e2e image image-test qpkg
 
 test:
 	go test ./...
@@ -43,6 +43,15 @@ image:
 	  --build-arg VERSION=$(VERSION) --build-arg BASE_REGISTRY=$(BASE_REGISTRY) \
 	  --build-arg GOPROXY=$(GOPROXY_IMAGE) \
 	  -t tern:$(VERSION) .
+
+# The QNAP packages, build/qnap/tern_<version>_<arch>.qpkg for x86_64 and
+# arm_64; QPKG_PLATFORMS=linux/amd64 builds one. See deploy/qnap/.
+QPKG_PLATFORMS ?= linux/amd64,linux/arm64
+qpkg:
+	docker buildx build --platform $(QPKG_PLATFORMS) -f deploy/qnap/Dockerfile \
+	  --build-arg VERSION=$(VERSION) --build-arg BASE_REGISTRY=$(BASE_REGISTRY) \
+	  --build-arg GOPROXY=$(GOPROXY_IMAGE) \
+	  --output type=local,dest=build/qnap,platform-split=false .
 
 # Tests the image from the outside with the docker command line. Both
 # architectures are built: one test runs the tools of each.

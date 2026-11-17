@@ -1,5 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { qk } from './queries'
+import { url } from '../lib/base'
 import type { Progress, Run } from './types'
 
 const URL = '/api/v1/events'
@@ -28,7 +29,7 @@ export function connectEvents(qc: QueryClient, make: (url: string) => EventSourc
 
   const open = () => {
     if (stopped) return
-    const s = make(URL)
+    const s = make(url(URL))
     es = s
     s.addEventListener('run.updated', (e) => {
       const run = parse<Run>(e)

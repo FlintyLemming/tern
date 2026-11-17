@@ -1,0 +1,39 @@
+{
+  "error": {
+    "data_not_mounted": "The data directory is not on a data volume of the NAS. Install tern on a data volume",
+    "secrets_not_mounted": "The secrets directory is not on a data volume of the NAS. Install tern on a data volume, or use a passphrase instead"
+  },
+  "field": {
+    "not_absolute": "Enter an absolute path on the NAS, e.g. /share/Photos",
+    "not_mounted": "This directory is not on a data volume of the NAS; restored data would vanish when the NAS restarts",
+    "not_writable": "This directory is not writable. Check whether the shared folder is read-only"
+  },
+  "keyfile": {
+    "fix": "Put the original master.key back into the secrets directory of tern's install folder, then stop and start tern in App Center.",
+    "note": "There is nothing to do on this page: it can only be fixed on the NAS."
+  },
+  "setup": {
+    "password_hint": "At least 10 characters. You normally sign in through QTS; this password confirms viewing recovery info and changing the unlock mode, and logs you in when the QTS sign-in check is unavailable.",
+    "mode_keyfile_desc": "Unlocks by itself after a restart, so scheduled tasks keep running. The key file is in the secrets folder of tern's install folder; keep a copy off this NAS.",
+    "no_data": "The data directory is not on a data volume of the NAS, so every setting would be lost when the NAS restarts. Install tern on a data volume.",
+    "no_secrets": "The secrets directory is not on a data volume of the NAS. Install tern on a data volume, or use a passphrase instead."
+  },
+  "task": {
+    "hook_local": "On this NAS",
+    "hook_warning": "Anyone who can log in here can run any command on the NAS as administrator through this.",
+    "local_placeholder": "/share/…"
+  },
+  "bbr": {
+    "supported": "The kernel supports BBR, but the current algorithm is {{current}}. Log in to the NAS over SSH as an administrator and run the command below. It applies to the whole NAS and has to be run again after the NAS restarts",
+    "supported_code": "sysctl -w net.ipv4.tcp_congestion_control=bbr",
+    "missing": "The NAS kernel has not loaded the tcp_bbr module. Log in to the NAS over SSH as an administrator and run the command below"
+  },
+  "snap": {
+    "restore_desc": "Restores into a new or empty directory, never over the original. The directory must be on a data volume of the NAS, e.g. /share/Restore/…",
+    "subpath_hint": "Restore only this directory or file of the snapshot, e.g. /share/Photos/2024."
+  },
+  "settings": {
+    "timezone_hint": "Set by QTS's time zone. After changing it, stop and start tern in App Center.",
+    "timezone_unknown": "QTS's time zone could not be read, so times here are shown in UTC. Try stopping and starting tern in App Center."
+  }
+}

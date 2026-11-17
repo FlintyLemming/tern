@@ -1,5 +1,8 @@
 import zh from './zh.json'
 import en from './en.json'
+import zhQTS from './zh.qts.json'
+import enQTS from './en.qts.json'
+import i18n, { applyPlatform } from '.'
 
 function keys(o: unknown, prefix = ''): string[] {
   if (typeof o !== 'object' || o === null) return [prefix]
@@ -28,7 +31,7 @@ const errorCodes = [
   'validation', 'bad_request', 'not_found', 'conflict', 'in_use', 'unauthorized', 'forbidden', 'csrf', 'rate_limited',
   'internal', 'already_setup', 'vault_locked', 'vault_unavailable', 'host_key_required', 'passphrase_required',
   'bad_passphrase', 'unsupported_key', 'unreachable', 'task_active', 'paused', 'recovery_not_confirmed',
-  'wrong_repo_password', 'unavailable', 'keyfile_not_removed', 'network',
+  'wrong_repo_password', 'unavailable', 'keyfile_not_removed', 'network', 'qts_admin_required',
 ]
 const fieldCodes = [
   'required', 'invalid', 'too_long', 'too_short', 'not_found', 'not_allowed', 'immutable', 'overlaps', 'never_fires',
@@ -44,4 +47,27 @@ it('has a label for every status and error code', () => {
     for (const c of fieldCodes) expect(has(lang, `field.${c}`), c).toBe(true)
     for (const k of kinds) expect(has(lang, `kind.${k}`), k).toBe(true)
   }
+})
+
+// The QNAP wording replaces strings; it never brings keys of its own.
+it('QTS overlays only replace existing keys, the same in both languages', () => {
+  expect(keys(zhQTS).sort()).toEqual(keys(enQTS).sort())
+  for (const k of keys(zhQTS)) {
+    expect(has(zh, k), k).toBe(true)
+    expect(has(en, k), k).toBe(true)
+  }
+})
+
+it('switches the wording with the platform', async () => {
+  const t = () => i18n.t('task.hook_local')
+  expect(t()).toBe('容器内')
+  applyPlatform('qts')
+  expect(t()).toBe('本机（NAS）')
+  expect(i18n.t('setup.step1')).toBe('管理员与节点') // keys without a QTS text stay
+  await i18n.changeLanguage('en')
+  expect(t()).toBe('On this NAS')
+  applyPlatform('docker')
+  expect(t()).toBe('Inside the container')
+  applyPlatform(undefined) // an older server says nothing: docker
+  expect(t()).toBe('Inside the container')
 })

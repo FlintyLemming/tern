@@ -63,6 +63,7 @@
     "already_setup": "This node has already been set up",
     "data_not_mounted": "/data is not mounted from the host; add ./data:/data to the compose file and restart",
     "secrets_not_mounted": "/secrets is not mounted; add ./secrets:/secrets and restart, or use a passphrase instead",
+    "qts_admin_required": "Sign in to QTS as an administrator to set up tern",
     "vault_locked": "The vault is locked; unlock it first",
     "vault_unavailable": "The vault cannot be opened; check the secrets directory",
     "host_key_required": "Fetch and confirm the host fingerprint first",
@@ -109,6 +110,7 @@
   "shell": {
     "menu": "Menu",
     "logout": "Log out",
+    "qts_user": "Signed in through QTS: {{user}}",
     "zone": "Times are in the node time zone, {{zone}}",
     "status_failed": "Cannot reach tern"
   },
@@ -155,6 +157,7 @@
   },
   "login": {
     "title": "Log in",
+    "qts_none": "No QTS administrator sign-in was found. Sign in to QTS again and reopen tern, or enter the tern admin password below.",
     "password": "Admin password",
     "submit": "Log in",
     "wrong": "Wrong password",
@@ -362,7 +365,8 @@
     "recovery_create": "Confirm and create",
     "cmd_title": "Equivalent command line",
     "cmd_desc": "Running these by hand does the same thing. Credentials are not included; supply them yourself.",
-    "repo_password_source": "Where the repository password comes from"
+    "repo_password_source": "Where the repository password comes from",
+    "local_placeholder": "/data/…"
   },
   "overview": {
     "title": "Overview",
@@ -382,7 +386,9 @@
     "title": "BBR",
     "active": "BBR is on",
     "supported": "The kernel supports BBR, but the current algorithm is {{current}}. Add the line below under sysctls in the compose file, then recreate the container",
+    "supported_code": "net.ipv4.tcp_congestion_control: bbr",
     "missing": "The host kernel has not loaded the tcp_bbr module. Run the command below on the host, then recreate the container",
+    "missing_code": "modprobe tcp_bbr",
     "note": "BBR only helps data this node sends, that is pushes and backups. For pulls it is up to the remote."
   },
   "run": {

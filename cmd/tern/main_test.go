@@ -79,6 +79,20 @@ func TestHealthcheckOK(t *testing.T) {
 	}
 }
 
+// The QNAP package serves tern below /tern; the check has to ask there.
+func TestHealthcheckBasePath(t *testing.T) {
+	env := testEnv(t)
+	env["TERN_BASE_PATH"] = "/tern"
+	startNode(t, env)
+	if code := healthcheck(getenv(env)); code != 0 {
+		t.Fatalf("healthcheck with TERN_BASE_PATH = %d, want 0", code)
+	}
+	delete(env, "TERN_BASE_PATH") // asking at the root finds nothing
+	if code := healthcheck(getenv(env)); code != 1 {
+		t.Fatalf("healthcheck without the base path = %d, want 1", code)
+	}
+}
+
 func TestHealthcheckDown(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

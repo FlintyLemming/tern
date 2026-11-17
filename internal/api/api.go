@@ -2,7 +2,10 @@
 package api
 
 import (
+	"context"
 	"net/http"
+	"path"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,6 +16,7 @@ import (
 	"tern/internal/engine"
 	"tern/internal/events"
 	"tern/internal/mounts"
+	"tern/internal/qts"
 	"tern/internal/runner"
 	"tern/internal/scheduler"
 	"tern/internal/store"
@@ -50,12 +54,27 @@ type Deps struct {
 	// mounted volumes at startup. Setup refuses to write where a
 	// recreated container would lose it.
 	Mounts sysinfo.Mounts
+
+	// QTS checks QTS sign-ins on the QTS platform. Defaults to a
+	// qts.Checker asking Cfg.QTSAuthURL; unused elsewhere.
+	QTS QTSChecker
+}
+
+// QTSChecker tells whether a QTS session id belongs to a signed-in
+// administrator (see package qts).
+type QTSChecker interface {
+	Admin(ctx context.Context, sid string) (user string, ok bool, err error)
 }
 
 // API is the HTTP handler for the whole process.
 type API struct {
-	d   Deps
-	mux *http.ServeMux
+	d    Deps
+	mux  *http.ServeMux
+	root http.Handler // mux, below Cfg.BasePath
+	csp  string
+
+	qtsKeyMu sync.Mutex
+	qtsKey   []byte // CSRF key for QTS sign-ins, loaded on first use
 
 	setupMu sync.Mutex // one setup at a time
 	loginMu sync.Mutex // check-limit, verify and count as one step
@@ -98,7 +117,20 @@ func New(d Deps) *API {
 	if d.Mounted == nil {
 		d.Mounted = mounts.IsMounted
 	}
-	a := &API{d: d, mux: http.NewServeMux(), closing: make(chan struct{})}
+	if d.Cfg.Platform == "" {
+		d.Cfg.Platform = config.PlatformDocker
+	}
+	if d.QTS == nil && d.Cfg.Platform == config.PlatformQTS {
+		d.QTS = qts.New(d.Cfg.QTSAuthURL, nil)
+	}
+	a := &API{d: d, mux: http.NewServeMux(), closing: make(chan struct{}), csp: cspDocker}
+	a.root = a.mux
+	if d.Cfg.BasePath != "" {
+		a.root = http.StripPrefix(d.Cfg.BasePath, a.mux)
+	}
+	if d.Cfg.Platform == config.PlatformQTS {
+		a.csp = cspQTS
+	}
 
 	a.Handle("GET /api/v1/status", a.handleStatus)
 	a.Handle("POST /api/v1/setup", a.handleSetup)
@@ -143,6 +175,46 @@ func (a *API) Handle(pattern string, h http.HandlerFunc, guards ...Guard) {
 
 func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer recoverPanic(w, r)
-	setSecurityHeaders(w)
-	a.mux.ServeHTTP(w, r)
+	a.setSecurityHeaders(w)
+	if c := canonicalPath(r.URL.Path); c != r.URL.Path {
+		// Served as the clean path, not redirected: ServeMux's redirect
+		// would leave out the base path, and QTS's proxy turns "/tern/x"
+		// into "/tern//x" on every request, so a redirect would loop.
+		u := *r.URL
+		u.Path, u.RawPath = c, ""
+		r2 := *r
+		r2.URL = &u
+		r = &r2
+	}
+	if base := a.d.Cfg.BasePath; base != "" {
+		switch p := r.URL.Path; {
+		case p == base:
+			to := base + "/"
+			if r.URL.RawQuery != "" {
+				to += "?" + r.URL.RawQuery
+			}
+			http.Redirect(w, r, to, http.StatusMovedPermanently)
+			return
+		case !strings.HasPrefix(p, base+"/"):
+			http.NotFound(w, r)
+			return
+		}
+	}
+	a.root.ServeHTTP(w, r)
 }
+
+// canonicalPath resolves duplicate slashes and dot segments, keeping a
+// trailing slash.
+func canonicalPath(p string) string {
+	if p == "" {
+		return "/"
+	}
+	c := path.Clean(p)
+	if strings.HasSuffix(p, "/") && c != "/" {
+		c += "/"
+	}
+	return c
+}
+
+// cookiePath scopes tern's cookie to where tern is served.
+func (a *API) cookiePath() string { return a.d.Cfg.BasePath + "/" }

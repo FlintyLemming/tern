@@ -1,0 +1,39 @@
+{
+  "error": {
+    "data_not_mounted": "数据目录不在 NAS 的数据卷上。重新安装 tern 到一个数据卷上",
+    "secrets_not_mounted": "secrets 目录不在 NAS 的数据卷上。重新安装 tern 到一个数据卷上，或者改用口令解锁"
+  },
+  "field": {
+    "not_absolute": "要填 NAS 上的绝对路径，例如 /share/Photos",
+    "not_mounted": "这个目录不在 NAS 的数据卷上，恢复出的数据会在 NAS 重启后消失",
+    "not_writable": "这个目录不可写。检查共享文件夹是不是只读"
+  },
+  "keyfile": {
+    "fix": "把原来的 master.key 放回 tern 安装目录下的 secrets 目录，然后在 App Center 里停用再启用 tern。",
+    "note": "这个页面上没有可以操作的东西：问题只能在 NAS 上解决。"
+  },
+  "setup": {
+    "password_hint": "至少 10 个字符。平时通过 QTS 登录；查看恢复信息、修改解锁方式时要输入它，QTS 登录检查不可用时也可以用它登录。",
+    "mode_keyfile_desc": "重启后自动解锁，计划任务照常运行。密钥文件在 tern 安装目录的 secrets 里，要另外保存一份到这台 NAS 以外。",
+    "no_data": "数据目录不在 NAS 的数据卷上，所有设置会在 NAS 重启时丢失。把 tern 重新安装到一个数据卷上。",
+    "no_secrets": "secrets 目录不在 NAS 的数据卷上。把 tern 重新安装到一个数据卷上，或者改用口令解锁。"
+  },
+  "task": {
+    "hook_local": "本机（NAS）",
+    "hook_warning": "能登录这个界面的人，可以通过这里以管理员身份在 NAS 上执行任意命令。",
+    "local_placeholder": "/share/…"
+  },
+  "bbr": {
+    "supported": "内核支持 BBR，但当前算法是 {{current}}。用 SSH 以管理员身份登录 NAS，执行下面的命令。它对整台 NAS 生效，NAS 重启后要重新执行",
+    "supported_code": "sysctl -w net.ipv4.tcp_congestion_control=bbr",
+    "missing": "NAS 的内核没有加载 tcp_bbr 模块。用 SSH 以管理员身份登录 NAS，执行下面的命令"
+  },
+  "snap": {
+    "restore_desc": "恢复到一个新目录或空目录，不会覆盖原来的位置。目录要在 NAS 的数据卷上，例如 /share/Restore/…",
+    "subpath_hint": "只恢复快照里的这个目录或文件，例如 /share/Photos/2024。"
+  },
+  "settings": {
+    "timezone_hint": "由 QTS 的时区设置决定。改了时区以后，在 App Center 里停用再启用 tern。",
+    "timezone_unknown": "没能读到 QTS 的时区设置，界面上的时间按 UTC 显示。在 App Center 里停用再启用 tern 试试。"
+  }
+}
