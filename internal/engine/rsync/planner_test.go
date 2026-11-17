@@ -188,10 +188,13 @@ func TestTransferResult(t *testing.T) {
 	if len(progress) == 0 {
 		t.Error("no progress reported")
 	}
-	if !strings.Contains(f.log.String(), ">f+++++++++ sub/b.txt\n") {
-		t.Errorf("log:\n%s", f.log.String())
+	if strings.Contains(f.log.String(), ">f+++++++++ sub/b.txt") {
+		t.Errorf("per-file entry leaked into log:\n%s", f.log.String())
 	}
-	if c := f.tool.Calls()[0]; slices.Contains(c.Args, "--dry-run") || c.Args[len(c.Args)-1] != "tern-target:/srv/a/" {
+	if !strings.Contains(f.log.String(), "Number of regular files transferred: 2") {
+		t.Errorf("log lacks stats summary:\n%s", f.log.String())
+	}
+	if c := f.tool.Calls()[0]; slices.Contains(c.Args, "--dry-run") || slices.Contains(c.Args, "--out-format=%i %n%L") || c.Args[len(c.Args)-1] != "tern-target:/srv/a/" {
 		t.Errorf("args = %q", c.Args)
 	}
 }

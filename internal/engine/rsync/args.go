@@ -32,11 +32,13 @@ const pidPrefix = "tern-pid:"
 
 // Args is the rsync call that syncs one folder pair. A mirror always gets
 // --delete (a dry run has to list the deletions); maxDelete >= 0 adds the
-// limit. excludeFile is "" when the task has no exclude rules.
+// limit. excludeFile is "" when the task has no exclude rules. Itemized
+// output (--out-format) is only requested for dry runs so large transfers do
+// not flood the run log with one line per file.
 func Args(spec model.SyncSpec, p model.FolderPair, sshConfig, excludeFile string, dryRun bool, maxDelete int) []string {
 	// -s keeps the remote shell from splitting or expanding the remote path.
 	args := []string{"-aHs", "--no-inc-recursive", "--partial-dir=.tern-partial", "--timeout=60", "--info=progress2", "--stats",
-		"--out-format=%i %n%L", "-e", shell(sshConfig), "--rsync-path=" + rsyncPath}
+		"-e", shell(sshConfig), "--rsync-path=" + rsyncPath}
 	if spec.DeleteMode == "mirror" {
 		args = append(args, "--delete")
 		if maxDelete >= 0 {
@@ -53,7 +55,7 @@ func Args(spec model.SyncSpec, p model.FolderPair, sshConfig, excludeFile string
 		args = append(args, "--exclude-from="+excludeFile)
 	}
 	if dryRun {
-		args = append(args, "--dry-run")
+		args = append(args, "--dry-run", "--out-format=%i %n%L")
 	}
 	src, dst := dir(p.Local), remote(p.Remote)
 	if spec.Direction == "pull" {

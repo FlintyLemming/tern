@@ -100,12 +100,21 @@ func TestLogLineReadable(t *testing.T) {
 	if got := p.Line([]byte(`{"level":"error","msg":"boom","object":"a.txt"}`)); got != "ERROR a.txt: boom" {
 		t.Errorf("error line = %q", got)
 	}
-	if got := p.Line([]byte(`{"level":"info","msg":"There was nothing to transfer"}`)); got != "INFO There was nothing to transfer" {
-		t.Errorf("line without object = %q", got)
+	if got := p.Line([]byte(`{"level":"notice","msg":"--max-delete threshold reached"}`)); got != "NOTICE --max-delete threshold reached" {
+		t.Errorf("notice line without object = %q", got)
 	}
-	stats := `{"level":"info","msg":"\nTransferred: 12 B / 12 B\n","stats":{"bytes":12,"totalBytes":12,"transfers":2,"totalTransfers":2,"eta":null,"speed":0}}`
+	if got := p.Line([]byte(`{"level":"info","msg":"Copied (new)","object":"a.txt"}`)); got != "" {
+		t.Errorf("info line = %q, want \"\"", got)
+	}
+	if got := p.Line([]byte(`{"level":"debug","msg":"trace"}`)); got != "" {
+		t.Errorf("debug line = %q, want \"\"", got)
+	}
+	stats := `{"level":"notice","msg":"\nTransferred: 12 B / 12 B\n","stats":{"bytes":12,"totalBytes":12,"transfers":2,"totalTransfers":2,"eta":null,"speed":0}}`
 	if got := p.Line([]byte(stats)); got != "" {
 		t.Errorf("stats line = %q, want \"\"", got)
+	}
+	if bytes, files := p.Totals(); bytes != 12 || files != 2 {
+		t.Errorf("Totals = %d, %d; want 12, 2", bytes, files)
 	}
 }
 

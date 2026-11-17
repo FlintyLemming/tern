@@ -216,6 +216,9 @@ func (p *planner) Transfer(ctx context.Context, env engine.Env, fp model.FolderP
 	if err != nil {
 		return out, err
 	}
+	if res.ExitCode == 0 || out.Files > 0 || out.Bytes > 0 {
+		fmt.Fprintf(env.Log, "summary: %d files transferred, %d bytes\n", out.Files, out.Bytes)
+	}
 	if res.ExitCode != 0 {
 		return out, failure(env, args[0], res)
 	}

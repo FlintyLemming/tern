@@ -25,7 +25,7 @@ func TestArgsPushMirror(t *testing.T) {
 	s.Excludes = []string{"*.tmp"}
 	got := Args(s, pairA, cfg, "F", false, 7)
 	want := []string{"-aHs", "--no-inc-recursive", "--partial-dir=.tern-partial", "--timeout=60", "--info=progress2", "--stats",
-		"--out-format=%i %n%L", "-e", sshArg, `--rsync-path=sh -c 'echo tern-pid:$$ >&2; exec rsync "$@"' rsync`,
+		"-e", sshArg, `--rsync-path=sh -c 'echo tern-pid:$$ >&2; exec rsync "$@"' rsync`,
 		"--delete", "--max-delete=7", "--bwlimit=2048", "--exclude-from=F",
 		"/sources/a/", "tern-target:/srv/a/"}
 	if !reflect.DeepEqual(got, want) {
@@ -68,10 +68,12 @@ func TestArgsMirrorDryRunListsDeletes(t *testing.T) {
 }
 
 func TestArgsDryRun(t *testing.T) {
-	if got := Args(spec("push", "keep"), pairA, cfg, "", true, -1); !slices.Contains(got, "--dry-run") {
+	got := Args(spec("push", "keep"), pairA, cfg, "", true, -1)
+	if !slices.Contains(got, "--dry-run") || !slices.Contains(got, "--out-format=%i %n%L") {
 		t.Errorf("Args = %q", got)
 	}
-	if got := Args(spec("push", "keep"), pairA, cfg, "", false, -1); slices.Contains(got, "--dry-run") {
+	got = Args(spec("push", "keep"), pairA, cfg, "", false, -1)
+	if slices.Contains(got, "--dry-run") || slices.Contains(got, "--out-format=%i %n%L") {
 		t.Errorf("Args = %q", got)
 	}
 }

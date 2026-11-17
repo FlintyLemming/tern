@@ -211,6 +211,7 @@ func (p *planner) Transfer(ctx context.Context, env engine.Env, fp model.FolderP
 	}
 	p.stopStale(ctx, env, fp)
 	parser := NewParser(env.Progress)
+	parser.quiet = true
 	var remotePID string
 	res, err := p.exec(ctx, env, Args(p.spec, fp, p.sshConfig, p.excludes, false, maxDelete), parser.Line,
 		func(pid string) { remotePID = pid })

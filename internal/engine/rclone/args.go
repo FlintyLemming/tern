@@ -17,9 +17,9 @@ import (
 // 15 s connect timeout, let rclone give up within about two minutes of an
 // outage (the SSH keepalive notices it after about one).
 func fixed(conf string) []string {
-	return []string{"--config", conf, "--use-json-log", "--log-level", "INFO", "--stats", "2s",
-		"--timeout", "60s", "--contimeout", "15s", "--retries", "1", "--low-level-retries", "3",
-		"--skip-links", "--create-empty-src-dirs"}
+	return []string{"--config", conf, "--use-json-log", "--log-level", "NOTICE", "--stats", "2s",
+		"--stats-log-level", "NOTICE", "--timeout", "60s", "--contimeout", "15s", "--retries", "1",
+		"--low-level-retries", "3", "--skip-links", "--create-empty-src-dirs"}
 }
 
 // remote names a path on the task's connection.

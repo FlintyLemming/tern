@@ -76,6 +76,12 @@ func (p *Parser) Line(b []byte) (logLine string) {
 		}
 		return ""
 	}
+	// Per-file transfer and mtime messages arrive at debug/info level; keep
+	// them out of the run log so large syncs do not drown errors or hit the
+	// log size cap.
+	if e.Level == "debug" || e.Level == "info" {
+		return ""
+	}
 	text := strings.ToUpper(e.Level) + " "
 	if e.Object != "" {
 		text += e.Object + ": "

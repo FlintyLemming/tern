@@ -152,8 +152,11 @@ func TestTransferResult(t *testing.T) {
 	if len(progress) == 0 {
 		t.Error("no progress reported")
 	}
-	if !strings.Contains(f.log.String(), "INFO sub/b.txt: Copied (new)") {
-		t.Errorf("log:\n%s", f.log.String())
+	if strings.Contains(f.log.String(), "Copied (new)") {
+		t.Errorf("per-file info line leaked into log:\n%s", f.log.String())
+	}
+	if !strings.Contains(f.log.String(), "summary: 2 files transferred, 12 bytes\n") {
+		t.Errorf("log lacks summary:\n%s", f.log.String())
 	}
 	if calls := f.tool.Calls(); len(calls) != 1 || calls[0].Args[0] != "copy" || slices.Contains(calls[0].Args, "--dry-run") {
 		t.Errorf("calls = %+v", calls)

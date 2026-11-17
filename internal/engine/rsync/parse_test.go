@@ -175,10 +175,14 @@ func TestDecodeEscapes(t *testing.T) {
 	}
 }
 
-func TestEntryLinesLogged(t *testing.T) {
+func TestQuietSuppressesEntries(t *testing.T) {
 	p := NewParser(nil)
-	if got := p.Line([]byte(">f+++++++++ a.txt")); got != ">f+++++++++ a.txt" {
-		t.Errorf("entry line = %q", got)
+	p.quiet = true
+	if got := p.Line([]byte(">f+++++++++ a.txt")); got != "" {
+		t.Errorf("quiet entry line = %q, want \"\"", got)
+	}
+	if got := p.Line([]byte("*deleting   old.txt")); got != "" {
+		t.Errorf("quiet delete line = %q, want \"\"", got)
 	}
 	if got := p.Line([]byte("Literal data: 12 bytes")); got != "Literal data: 12 bytes" {
 		t.Errorf("stats line = %q", got)
