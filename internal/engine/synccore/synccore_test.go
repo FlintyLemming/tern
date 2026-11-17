@@ -446,11 +446,18 @@ func TestCloseClosesPlanner(t *testing.T) {
 	}
 }
 
-// progressPlanner reports one progress update from Transfer.
-type progressPlanner struct{ fakePlanner }
+// progressPlanner reports fixed progress updates from Transfer.
+type progressPlanner struct {
+	fakePlanner
+	reported model.Progress
+}
 
 func (p *progressPlanner) Transfer(ctx context.Context, env engine.Env, fp model.FolderPair, maxDelete int) (model.UnitResult, error) {
-	env.Progress(model.Progress{BytesDone: 1})
+	pr := p.reported
+	if pr == (model.Progress{}) {
+		pr = model.Progress{BytesDone: 1}
+	}
+	env.Progress(pr)
 	return p.fakePlanner.Transfer(ctx, env, fp, maxDelete)
 }
 
@@ -465,6 +472,57 @@ func TestProgressCarriesUnitName(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(got) != 1 || got[0].Unit != local+" → /srv/a" || got[0].BytesDone != 1 {
+		t.Errorf("progress = %+v", got)
+	}
+}
+
+func TestMirrorProgressUsesPlanTotals(t *testing.T) {
+	f := newFixture(t)
+	var got []model.Progress
+	f.env.Progress = func(p model.Progress) { got = append(got, p) }
+	local := dirWith(t, "a")
+	p := &progressPlanner{
+		reported: model.Progress{
+			BytesDone: 100, BytesTotal: 500, TotalEstimated: true,
+			FilesDone: 1, FilesTotal: 5, SpeedBps: 50, ETASec: 8,
+		},
+	}
+	p.plan.AddTransfer("big.bin", 1000)
+	p.plan.AddTransfer("more.bin", 1100)
+	e := New(syncTask("push", "mirror", model.FolderPair{Local: local, Remote: "/srv/a"}), engine.Request{Kind: model.RunSync},
+		p, func(context.Context) error { return nil }, func(string) (bool, error) { return true, nil })
+	if _, err := e.RunUnit(context.Background(), f.env, 0); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d progress updates, want 1", len(got))
+	}
+	want := model.Progress{
+		Unit: local + " → /srv/a", BytesDone: 100, BytesTotal: 2100, TotalEstimated: false,
+		FilesDone: 1, FilesTotal: 5, SpeedBps: 50, ETASec: 40,
+	}
+	if got[0] != want {
+		t.Errorf("progress = %+v, want %+v", got[0], want)
+	}
+}
+
+func TestKeepProgressPreservesEstimated(t *testing.T) {
+	f := newFixture(t)
+	var got []model.Progress
+	f.env.Progress = func(p model.Progress) { got = append(got, p) }
+	local := dirWith(t, "a")
+	p := &progressPlanner{
+		reported: model.Progress{
+			BytesDone: 100, BytesTotal: 500, TotalEstimated: true,
+			FilesDone: 1, FilesTotal: 5, SpeedBps: 50, ETASec: 8,
+		},
+	}
+	e := New(syncTask("push", "keep", model.FolderPair{Local: local, Remote: "/srv/a"}), engine.Request{Kind: model.RunSync},
+		p, func(context.Context) error { return nil }, func(string) (bool, error) { return true, nil })
+	if _, err := e.RunUnit(context.Background(), f.env, 0); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || !got[0].TotalEstimated || got[0].BytesTotal != 500 {
 		t.Errorf("progress = %+v", got)
 	}
 }

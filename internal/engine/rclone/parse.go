@@ -50,8 +50,14 @@ func (p *Parser) Line(b []byte) (logLine string) {
 	if s := e.Stats; s != nil {
 		p.bytes, p.files = s.Bytes, s.Transfers
 		if p.onProgress != nil {
-			pr := model.Progress{BytesDone: s.Bytes, BytesTotal: s.TotalBytes, FilesDone: s.Transfers,
-				FilesTotal: s.TotalTransfers, SpeedBps: s.Speed}
+			pr := model.Progress{
+				BytesDone:      s.Bytes,
+				BytesTotal:     s.TotalBytes,
+				TotalEstimated: true, // rclone streams discovery; totalBytes is only queued+done so far
+				FilesDone:      s.Transfers,
+				FilesTotal:     s.TotalTransfers,
+				SpeedBps:       s.Speed,
+			}
 			if s.ETA != nil {
 				pr.ETASec = int64(*s.ETA)
 			}

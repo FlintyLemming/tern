@@ -6,14 +6,14 @@ import { ApiError } from '../../api/client'
 import { errorText } from '../../api/errors'
 import { qk, useCancelRun, useRun, useRunProgress, useRunTask } from '../../api/queries'
 import { isTerminal, type Run } from '../../api/types'
-import { formatBytes, formatDuration, formatETA, formatSpeed, type Lang } from '../../lib/format'
+import { formatBytes, formatDuration, type Lang } from '../../lib/format'
 import { NodeTime } from '../../shell/NodeTime'
 import { Banner } from '../../ui/Banner'
 import { Button } from '../../ui/Button'
 import { Card } from '../../ui/Card'
 import { Dialog } from '../../ui/Dialog'
 import { PageHeader } from '../../ui/PageHeader'
-import { ProgressBar } from '../../ui/ProgressBar'
+import { RunProgress } from '../../ui/ProgressBar'
 import { StatusDot } from '../../ui/StatusDot'
 import { Table } from '../../ui/Table'
 import { useToast } from '../../ui/Toast'
@@ -101,15 +101,7 @@ export function RunDetailPage() {
           </dl>
           {!done && progress ? (
             <div className="mt-4 flex flex-col gap-1">
-              <ProgressBar done={progress.bytes_done} total={progress.bytes_total} />
-              <p className="text-caption text-ink-muted">
-                {t('overview.progress', {
-                  done: formatBytes(progress.bytes_done),
-                  total: formatBytes(progress.bytes_total),
-                  speed: formatSpeed(progress.speed_bps),
-                  eta: formatETA(progress.eta_sec),
-                })}
-              </p>
+              <RunProgress progress={progress} />
             </div>
           ) : null}
         </Card>

@@ -96,6 +96,18 @@ it('progress updates from run.progress event', async () => {
   stop()
 })
 
+it('progress row for estimated total', async () => {
+  renderOverview(
+    running({
+      run_id: 'r7',
+      status: 'running',
+      progress: { unit: '/data', bytes_done: 1048576, bytes_total: 4194304, total_estimated: true, files_done: 1, files_total: 4, speed_bps: 2097152, eta_sec: 1 },
+    }),
+  )
+  expect(await screen.findByText('已传 1 MiB（扫描中，已发现待传 4 MiB+）· 2 MiB/s')).toBeInTheDocument()
+  expect(screen.getByRole('progressbar')).not.toHaveAttribute('aria-valuenow')
+})
+
 it('retry_wait shows waiting text', async () => {
   renderOverview(running({ run_id: 'r7', status: 'retry_wait', progress: null }))
   expect(await screen.findByText('等待重试')).toBeInTheDocument()

@@ -51,7 +51,7 @@ func TestParseCopyFixture(t *testing.T) {
 	if len(progress) == 0 {
 		t.Fatal("no progress reported")
 	}
-	if last := progress[len(progress)-1]; last.BytesDone != 12 || last.BytesTotal != 12 || last.FilesDone != 2 || last.FilesTotal != 2 {
+	if last := progress[len(progress)-1]; last.BytesDone != 12 || last.BytesTotal != 12 || !last.TotalEstimated || last.FilesDone != 2 || last.FilesTotal != 2 {
 		t.Errorf("last progress = %+v", last)
 	}
 }

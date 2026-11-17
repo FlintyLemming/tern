@@ -126,6 +126,13 @@ it('ProgressBar reports done of total', () => {
   expect(bar).toHaveAttribute('aria-valuemax', '100')
 })
 
+it('ProgressBar is indeterminate when total is estimated', () => {
+  render(<ProgressBar done={25} total={100} estimated />)
+  const bar = screen.getByRole('progressbar')
+  expect(bar).not.toHaveAttribute('aria-valuenow')
+  expect(bar).not.toHaveAttribute('aria-valuemax')
+})
+
 it('Banner danger is an alert', () => {
   render(<Banner tone="danger">出事了</Banner>)
   expect(screen.getByRole('alert')).toHaveTextContent('出事了')

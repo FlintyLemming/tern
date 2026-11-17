@@ -185,6 +185,7 @@ export interface Progress {
   unit: string
   bytes_done: number
   bytes_total: number
+  total_estimated?: boolean
   files_done: number
   files_total: number
   speed_bps: number

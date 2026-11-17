@@ -103,11 +103,12 @@ type UnitResult struct {
 
 // Progress is the common shape of what the tools report while running.
 type Progress struct {
-	Unit       string  `json:"unit"`
-	BytesDone  int64   `json:"bytes_done"`
-	BytesTotal int64   `json:"bytes_total"`
-	FilesDone  int64   `json:"files_done"`
-	FilesTotal int64   `json:"files_total"`
-	SpeedBps   float64 `json:"speed_bps"`
-	ETASec     int64   `json:"eta_sec"`
+	Unit           string  `json:"unit"`
+	BytesDone      int64   `json:"bytes_done"`
+	BytesTotal     int64   `json:"bytes_total"`
+	TotalEstimated bool    `json:"total_estimated,omitempty"`
+	FilesDone      int64   `json:"files_done"`
+	FilesTotal     int64   `json:"files_total"`
+	SpeedBps       float64 `json:"speed_bps"`
+	ETASec         int64   `json:"eta_sec"`
 }

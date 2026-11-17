@@ -365,6 +365,8 @@
     "col_next": "下次运行",
     "empty": "还没有任务。先在“连接与密钥”里添加连接，再到“任务”里新建。",
     "progress": "已传 {{done}} / {{total}} · {{speed}} · 预计剩余 {{eta}}",
+    "progress_scanning": "已传 {{done}}（扫描中，已发现待传 {{total}}+）· {{speed}}",
+    "progress_unknown": "已传 {{done}} · {{speed}}",
     "waiting_retry": "等待重试",
     "queued": "排队中",
     "starting": "正在开始…"

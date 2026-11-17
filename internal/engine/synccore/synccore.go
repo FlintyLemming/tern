@@ -191,10 +191,28 @@ func (e *Engine) RunUnit(ctx context.Context, env engine.Env, i int) (model.Unit
 	p := e.spec.Pairs[i]
 	name := e.unitName(p)
 	out := model.UnitResult{Name: name}
+	var plan Plan
 	if env.Progress != nil {
 		report := env.Progress
 		env.Progress = func(pr model.Progress) {
 			pr.Unit = name
+			// Mirror mode already ran Plan() over the full pair; prefer its
+			// total when the streaming transfer tool (rclone) has only
+			// queued part of the tree so far.
+			if plan.Bytes > 0 {
+				if pr.BytesTotal < plan.Bytes {
+					pr.BytesTotal = plan.Bytes
+					if pr.SpeedBps > 0 && pr.BytesTotal > pr.BytesDone {
+						pr.ETASec = int64(float64(pr.BytesTotal-pr.BytesDone) / pr.SpeedBps)
+					} else {
+						pr.ETASec = 0
+					}
+				}
+				if fc := int64(plan.TransferCount); pr.FilesTotal < fc {
+					pr.FilesTotal = fc
+				}
+				pr.TotalEstimated = false
+			}
 			report(pr)
 		}
 	}
@@ -213,7 +231,6 @@ func (e *Engine) RunUnit(ctx context.Context, env engine.Env, i int) (model.Unit
 		}
 	}
 
-	var plan Plan
 	if e.mirror() || dryRun {
 		var err error
 		if plan, err = e.p.Plan(ctx, env, p); err != nil {

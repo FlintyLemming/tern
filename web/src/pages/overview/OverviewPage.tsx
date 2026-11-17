@@ -4,12 +4,12 @@ import { Link } from 'react-router'
 import { errorText } from '../../api/errors'
 import { useOverview, useRunProgress, useRunTask } from '../../api/queries'
 import type { OverviewItem } from '../../api/types'
-import { formatBytes, formatETA, formatRelative, formatSpeed, type Lang } from '../../lib/format'
+import { formatRelative, type Lang } from '../../lib/format'
 import { NodeTime, useFormatTime, useNodeZone } from '../../shell/NodeTime'
 import { Banner } from '../../ui/Banner'
 import { Button } from '../../ui/Button'
 import { PageHeader } from '../../ui/PageHeader'
-import { ProgressBar } from '../../ui/ProgressBar'
+import { RunProgress } from '../../ui/ProgressBar'
 import { StatusDot } from '../../ui/StatusDot'
 import { Table } from '../../ui/Table'
 import { useToast } from '../../ui/Toast'
@@ -37,10 +37,7 @@ function ActiveRun({ item }: { item: OverviewItem }) {
   if (!p) return <p className="text-caption text-ink-muted">{t('overview.starting')}</p>
   return (
     <div className="flex flex-col gap-1">
-      <ProgressBar done={p.bytes_done} total={p.bytes_total} />
-      <p className="text-caption text-ink-muted">
-        {t('overview.progress', { done: formatBytes(p.bytes_done), total: formatBytes(p.bytes_total), speed: formatSpeed(p.speed_bps), eta: formatETA(p.eta_sec) })}
-      </p>
+      <RunProgress progress={p} />
     </div>
   )
 }

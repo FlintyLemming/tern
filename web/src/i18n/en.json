@@ -365,6 +365,8 @@
     "col_next": "Next run",
     "empty": "No tasks yet. Add a connection under Connections & keys, then create a task under Tasks.",
     "progress": "{{done}} of {{total}} · {{speed}} · {{eta}} left",
+    "progress_scanning": "{{done}} transferred (scanning, {{total}}+ queued) · {{speed}}",
+    "progress_unknown": "{{done}} transferred · {{speed}}",
     "waiting_retry": "Waiting to retry",
     "queued": "Queued",
     "starting": "Starting…"
