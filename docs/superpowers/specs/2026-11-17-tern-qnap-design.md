@@ -60,7 +60,7 @@ in a new browser tab. The Docker edition stays as it is.
     by `GET /session` as usual. No session row is stored, so signing out of
     QTS ends access within 30 s.
   - tern's own admin password stays: setup still sets it, sensitive actions
-    (recovery info, unlock mode, password change) still confirm it, and the
+    (recovery info, password change) still confirm it, and the
     login page still takes it as a fallback when the QTS check fails. In
     QTS mode the login page first says that no QTS administrator session
     was found. The logout button is hidden for QTS sign-ins.
@@ -76,8 +76,8 @@ in a new browser tab. The Docker edition stays as it is.
 - **Layout on the NAS:** `<qpkg>/bin` (tern, restic, rclone, rsync, ssh),
   `<qpkg>/data`, `<qpkg>/secrets` (0700), `<qpkg>/tern.conf`, runtime in
   `/dev/shm/tern`. Upgrades keep `data`, `secrets` and `tern.conf`.
-  Uninstalling removes them (QDK default); the README says to keep the key
-  file and recovery info elsewhere.
+  Uninstalling removes them (QDK default); the README says to keep the
+  recovery info elsewhere.
 - **Mount check:** QTS's `/` is a RAM disk, so `mounts.IsMounted` already
   says yes for anything on a data volume and no for paths that would vanish
   on reboot. No special case.

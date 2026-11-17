@@ -82,7 +82,7 @@ func (w *hookWorld) want(t *testing.T, dir, result string, pres int) {
 func TestHooksEndToEnd(t *testing.T) {
 	s := up(t, nil)
 	c := s.api()
-	c.setup(adminPassword, "keyfile", "")
+	c.setup(adminPassword)
 	keyID, pub := c.generatedKey()
 	w := &hookWorld{t: t, s: s, c: c, conn: s.sshConnection(c, keyID, pub)}
 	src := filepath.Join(s.dirs["sources"], "hooks")

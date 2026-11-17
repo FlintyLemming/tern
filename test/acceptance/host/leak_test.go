@@ -173,25 +173,22 @@ type leakWorld struct {
 	nSamples int
 }
 
-// leakScenario sets a node up in mode and exercises everything that
-// handles a secret while sampling the container's processes and recording
-// the event stream.
-func leakScenario(t *testing.T, mode string) *leakWorld {
+// leakScenario sets a node up and exercises everything that handles a
+// secret while sampling the container's processes and recording the event
+// stream.
+func leakScenario(t *testing.T) *leakWorld {
 	secrets := canaries{
 		"admin password":      canary("admin"),
 		"key passphrase":      canary("keypass"),
 		"WebDAV password":     canary("dav"),
 		"repository password": canary("repo"),
 	}
-	if mode == "passphrase" {
-		secrets["vault passphrase"] = canary("vault")
-	}
 	keyPEM, authorized, middle := encryptedKey(t, secrets["key passphrase"])
 	secrets["private key PEM line"] = middle
 
 	s := up(t, map[string]string{"TERN_ACC_DAV_PASS": secrets["WebDAV password"]})
 	c := s.api()
-	c.setup(secrets["admin password"], mode, secrets["vault passphrase"])
+	c.setup(secrets["admin password"])
 	w := &leakWorld{s: s, c: c, secrets: secrets, ids: map[string][]string{}}
 
 	sm := s.sample()
@@ -392,7 +389,7 @@ func (w *leakWorld) scanSamples(t *testing.T) {
 // Spec §16 item 6: no plaintext secret in the database, logs, API
 // responses or the process list.
 func TestNoSecretLeak(t *testing.T) {
-	w := leakScenario(t, "keyfile")
+	w := leakScenario(t)
 	w.scanDataAndLogs(t)
 	w.scanAPI(t)
 	w.scanSamples(t)
@@ -409,19 +406,4 @@ func TestNoSecretLeak(t *testing.T) {
 	if left := strings.TrimSpace(w.s.exec("tern", "ls", "-A", "/dev/shm/tern")); left != "" {
 		t.Errorf("the runtime directory is not empty after every run ended:\n%s", left)
 	}
-}
-
-// The same in passphrase mode, with the vault passphrase as one more
-// canary; the node is restarted and unlocked once on the way.
-func TestNoSecretLeakPassphraseMode(t *testing.T) {
-	w := leakScenario(t, "passphrase")
-	w.s.restart("tern")
-	c := w.s.api()
-	c.login(w.secrets["admin password"])
-	c.unlock(w.secrets["vault passphrase"])
-	w.c = c
-	c.wantRun(c.runAndWait(w.backup, nil), "success")
-	w.scanDataAndLogs(t)
-	w.scanAPI(t)
-	w.scanSamples(t)
 }

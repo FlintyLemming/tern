@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"log/slog"
 	"net/http"
 	"regexp"
 	"unicode/utf8"
@@ -23,7 +22,7 @@ const (
 
 var nodeNameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
 
-// checkSecret validates a new password or passphrase: at least
+// checkSecret validates a new password: at least
 // auth.MinPasswordLen characters and at most auth.MaxSecretLen bytes.
 // It returns a field error code, or "" when the value is acceptable.
 func checkSecret(s string) string {
@@ -85,10 +84,8 @@ func writeSecretsNotMounted(w http.ResponseWriter) {
 
 func (a *API) handleSetup(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Password   string `json:"password"`
-		NodeName   string `json:"node_name"`
-		UnlockMode string `json:"unlock_mode"`
-		Passphrase string `json:"passphrase"`
+		Password string `json:"password"`
+		NodeName string `json:"node_name"`
 	}
 	if !readJSON(w, r, &req) {
 		return
@@ -108,8 +105,14 @@ func (a *API) handleSetup(w http.ResponseWriter, r *http.Request) {
 		}
 		qtsSession = s
 	}
+	// The database and the key file that opens its credentials must both
+	// outlive the container.
 	if !a.d.Mounts.Data {
 		writeDataNotMounted(w)
+		return
+	}
+	if !a.d.Mounts.Secrets {
+		writeSecretsNotMounted(w)
 		return
 	}
 
@@ -120,23 +123,8 @@ func (a *API) handleSetup(w http.ResponseWriter, r *http.Request) {
 	if !nodeNameRE.MatchString(req.NodeName) {
 		fields["node_name"] = "invalid"
 	}
-	mode := vault.Mode(req.UnlockMode)
-	switch mode {
-	case vault.ModeKeyfile:
-		req.Passphrase = "" // not used in this mode
-	case vault.ModePassphrase:
-		if code := checkSecret(req.Passphrase); code != "" {
-			fields["passphrase"] = code
-		}
-	default:
-		fields["unlock_mode"] = "invalid"
-	}
 	if len(fields) > 0 {
 		writeError(w, http.StatusBadRequest, "validation", "invalid setup request", fields)
-		return
-	}
-	if mode == vault.ModeKeyfile && !a.d.Mounts.Secrets {
-		writeSecretsNotMounted(w)
 		return
 	}
 
@@ -162,11 +150,13 @@ func (a *API) handleSetup(w http.ResponseWriter, r *http.Request) {
 		internalError(w, r, err)
 		return
 	}
-	err = a.d.Vault.Init(ctx, mode, req.Passphrase)
+	// The vault's key is generated into the key file; nobody ever sees it
+	// or types it.
+	err = a.d.Vault.Init(ctx)
 	if errors.Is(err, vault.ErrAlreadyInitialized) {
 		// An earlier attempt initialized the vault and died before the
 		// password was stored. Nothing can have been sealed yet: finish it.
-		if conflict := a.resumeVault(ctx, mode, req.Passphrase); conflict != "" {
+		if conflict := a.resumeVault(); conflict != "" {
 			writeError(w, http.StatusConflict, "conflict", conflict, nil)
 			return
 		}
@@ -210,28 +200,16 @@ func (a *API) startSession(w http.ResponseWriter, r *http.Request, status int) {
 	writeJSON(w, status, map[string]string{"csrf_token": csrf})
 }
 
-// resumeVault brings a vault left behind by an interrupted setup to the mode
-// and passphrase of this attempt. It returns "" on success, otherwise an
-// English explanation of why this attempt cannot take the vault over.
-func (a *API) resumeVault(ctx context.Context, mode vault.Mode, passphrase string) string {
+// resumeVault takes over a vault left behind by an interrupted setup. It
+// returns "" when this attempt can carry on with it, otherwise an English
+// explanation of why not.
+func (a *API) resumeVault() string {
 	v := a.d.Vault
-	const startOver = "to start over, stop tern and delete tern.db from the data directory"
-	switch v.State() {
-	case vault.StateUnlocked:
-	case vault.StateLocked:
-		if mode != vault.ModePassphrase {
-			return "an interrupted setup already chose passphrase mode; retry with unlock_mode passphrase and the same passphrase; " + startOver
-		}
-		if err := v.Unlock(ctx, passphrase); err != nil {
-			return "an interrupted setup already set a different passphrase; retry with that passphrase; " + startOver
-		}
-	default:
-		return "an interrupted setup created a vault whose key file is now " + string(v.State()) + "; " + startOver
+	if v.State() == vault.StateUnlocked && v.Mode() == vault.ModeKeyfile {
+		return ""
 	}
-	// Unlocked: re-wrap the (still unused) data key for this attempt's choice.
-	if err := v.SwitchMode(ctx, mode, passphrase); err != nil {
-		slog.Error("resuming interrupted setup failed", "err", err)
-		return "could not finish the interrupted setup; " + startOver
-	}
-	return ""
+	// A key file that went missing or changed since, or a passphrase-mode
+	// vault from an interrupted setup of tern 0.1.
+	return "an interrupted setup left a vault this one cannot open (" + string(v.State()) +
+		"); to start over, stop tern and delete tern.db from the data directory"
 }

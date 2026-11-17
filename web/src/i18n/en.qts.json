@@ -1,7 +1,7 @@
 {
   "error": {
     "data_not_mounted": "The data directory is not on a data volume of the NAS. Install tern on a data volume",
-    "secrets_not_mounted": "The secrets directory is not on a data volume of the NAS. Install tern on a data volume, or use a passphrase instead"
+    "secrets_not_mounted": "The secrets directory is not on a data volume of the NAS. Install tern on a data volume"
   },
   "field": {
     "not_absolute": "Enter an absolute path on the NAS, e.g. /share/Photos",
@@ -13,10 +13,9 @@
     "note": "There is nothing to do on this page: it can only be fixed on the NAS."
   },
   "setup": {
-    "password_hint": "At least 10 characters. You normally sign in through QTS; this password confirms viewing recovery info and changing the unlock mode, and logs you in when the QTS sign-in check is unavailable.",
-    "mode_keyfile_desc": "Unlocks by itself after a restart, so scheduled tasks keep running. The key file is in the secrets folder of tern's install folder; keep a copy off this NAS.",
+    "password_hint": "At least 10 characters. You normally sign in through QTS; this password confirms viewing recovery info and changing the password, and logs you in when the QTS sign-in check is unavailable.",
     "no_data": "The data directory is not on a data volume of the NAS, so every setting would be lost when the NAS restarts. Install tern on a data volume.",
-    "no_secrets": "The secrets directory is not on a data volume of the NAS. Install tern on a data volume, or use a passphrase instead."
+    "no_secrets": "The secrets directory is not on a data volume of the NAS, so the stored credentials could not be opened after the NAS restarts. Install tern on a data volume."
   },
   "task": {
     "hook_local": "On this NAS",

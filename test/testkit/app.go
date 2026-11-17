@@ -192,7 +192,7 @@ func Adopt(t *testing.T, base, dataDir string) *App {
 	var out struct {
 		CSRF string `json:"csrf_token"`
 	}
-	if code := a.Do("POST", "/api/v1/setup", map[string]any{"password": AdminPassword, "node_name": "nas-1", "unlock_mode": "keyfile"}, &out); code != http.StatusCreated {
+	if code := a.Do("POST", "/api/v1/setup", map[string]any{"password": AdminPassword, "node_name": "nas-1"}, &out); code != http.StatusCreated {
 		t.Fatalf("setup = %d", code)
 	}
 	a.csrf = out.CSRF

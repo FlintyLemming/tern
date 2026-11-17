@@ -18,7 +18,7 @@
 | 4 | 5% 丢包加断网后最终成功、不重传、rsync 续传 | `TestWeakNetRsync`、`TestWeakNetSFTP`、`TestWeakNetRestic`、`TestRsyncResumesBigFile` | `make acceptance`、`make itest` |
 | 5 | 镜像模式源为空或没挂上时目的地完好 | `TestMirrorEmptySourceKeepsDestination` | `make itest` |
 | 6 | 数据库、日志、接口、`ps` 里搜不到明文凭据 | `TestNoSecretLeak` | `make acceptance-host` |
-| 7 | 密钥文件模式下重启后计划任务自动恢复 | `TestRestartResumesSchedule` | `make acceptance-host` |
+| 7 | 重启后计划任务自动恢复 | `TestRestartResumesSchedule` | `make acceptance-host` |
 | 8 | 限速和并发文件数实测生效 | `TestLimitUpload`、`TestBwlimit`、`TestTransfersConcurrency` | `make itest` |
 | 9 | 前后置命令的行为符合 §10 | `TestHooksEndToEnd` 及计划 3 任务 3、4 的单元测试 | `make acceptance-host`、`make test` |
 
@@ -47,7 +47,7 @@
 
 | 项目 | 结果 |
 |---|---|
-| 安装、升级 | 直接运行 .qpkg（`install.sh` 的做法）可以装和升级，升级保留 `data`、`secrets`、`tern.conf`，密钥文件模式下升级后自动解锁。`qpkg_cli -m … -A 1` 在签名检查处停下：App Center 里没打开“允许安装没有有效数字签名的应用程序”时，不签名的包只能这样装。 |
+| 安装、升级 | 直接运行 .qpkg（`install.sh` 的做法）可以装和升级，升级保留 `data`、`secrets`、`tern.conf`，升级后自动解锁。`qpkg_cli -m … -A 1` 在签名检查处停下：App Center 里没打开“允许安装没有有效数字签名的应用程序”时，不签名的包只能这样装。 |
 | 窗口 | 主菜单里有 tern 图标，点开是 QTS 桌面窗口（标题栏、最小化、最大化、关闭、任务栏标签），不开新网页。QTS 给窗口加载的是 `/tern?v=<版本>&…`，即 `Proxy_Path`，不是 `WebUI`。 |
 | QTS 转发 | QTS 只在 App Center 启用应用时往 `/etc/app_proxy.conf` 写 `ProxyPass "/tern" "http://127.0.0.1:17180/tern/" retry=0`（端口取 `Web_Port`），停用时换成指向“应用已停用”页面的 `RewriteRule`，改 `Proxy_Path` 后旧行不删。所以 `tern.sh start` 自己检查并修正这一行，再平滑重载 QTS 的 Apache。清空这个文件（重启后就是这样）后访问 `/tern` 是 404，`tern.sh start` 后这一行补回来。目标末尾的 `/` 让 tern 收到 `/tern//api/…`，tern 就地按规范路径处理，不重定向。HTTP 5000 和 HTTPS 5001 都通。 |
 | 登录 | 登录着 QTS 的管理员打开窗口直接进入，状态里 `signed_in_via: qts`，侧栏显示“已通过 QTS 登录”而没有退出按钮；初始化只接受 QTS 管理员。退出 tern 自己的密码会话后留在应用里，回到 QTS 登录。写操作带 CSRF 令牌（由 QTS 会话号派生）。 |

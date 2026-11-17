@@ -373,9 +373,7 @@ func TestCommandLine(t *testing.T) {
 
 func TestTasksNeedUnlockedVault(t *testing.T) {
 	h := newHarness(t)
-	h.setup("passphrase")
-	h.restart() // locked
-	h.login()
+	h.setupLegacy() // locked
 	for _, req := range [][2]string{{"GET", "/api/v1/tasks"}, {"GET", "/api/v1/runs"}, {"GET", "/api/v1/overview"}, {"GET", "/api/v1/events"}} {
 		wantError(t, h.do(req[0], req[1], nil), http.StatusServiceUnavailable, "vault_locked")
 	}

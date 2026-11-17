@@ -67,15 +67,12 @@ async function login(page: Page) {
 }
 
 test('first run: from wizard to a successful sync, backup and restore', async ({ page }) => {
-  // 1. The wizard, in key file mode.
+  // 1. The wizard: one password and a node name.
   await page.goto(url())
   await expect(page).toHaveURL(/\/setup$/)
   await page.getByLabel('管理员密码').fill(ADMIN)
   await page.getByLabel('再输一遍').fill(ADMIN)
   await page.getByLabel('节点名').fill('nas-e2e')
-  await page.getByRole('button', { name: '下一步' }).click()
-  await expect(page.getByRole('radio', { name: /密钥文件/ })).toBeChecked()
-  await page.getByRole('button', { name: '下一步' }).click()
   await page.getByRole('button', { name: '完成初始化' }).click()
   await expect(page.getByRole('heading', { name: '概览' })).toBeVisible()
 

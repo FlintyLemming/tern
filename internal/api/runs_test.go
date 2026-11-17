@@ -261,7 +261,9 @@ func TestOverviewEmpty(t *testing.T) {
 
 func TestRunWhenPaused(t *testing.T) {
 	h := newHarness(t)
-	h.setup("passphrase")
+	h.mounts.Secrets = false // an old passphrase-mode vault that stays one
+	h.setupLegacy()
+	h.unlock()
 	task := h.newSyncTask("photos")
 	h.restart() // the vault is locked again
 	h.login()
@@ -271,15 +273,13 @@ func TestRunWhenPaused(t *testing.T) {
 		t.Error("the scheduler accepted a run while the vault is locked")
 	}
 	// Unlocking resumes it.
-	if w := h.do("POST", "/api/v1/unlock", map[string]any{"passphrase": vaultPass}); w.Code != http.StatusNoContent {
-		t.Fatalf("unlock = %d %s", w.Code, w.Body)
-	}
+	h.unlock()
 	h.rec.final(t, h.runNow(task, nil))
 }
 
 func TestSchedulerResumesAfterSetup(t *testing.T) {
 	h := newHarness(t) // not set up: no vault, scheduler paused
-	h.setup("keyfile")
+	h.setup()
 	h.rec.final(t, h.runNow(h.newSyncTask("photos"), nil))
 }
 

@@ -41,7 +41,7 @@ type env struct {
 	o  Opener
 }
 
-func newEnv(t *testing.T, mode vault.Mode) *env {
+func newEnv(t *testing.T) *env {
 	t.Helper()
 	ctx := context.Background()
 	st, err := store.Open(ctx, t.TempDir())
@@ -53,17 +53,17 @@ func newEnv(t *testing.T, mode vault.Mode) *env {
 	if _, err := v.Load(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := v.Init(ctx, mode, "a long vault passphrase"); err != nil {
+	if err := v.Init(ctx); err != nil {
 		t.Fatal(err)
 	}
 	return &env{t: t, st: st, v: v, o: Opener{Store: st, Vault: v}}
 }
 
-// lock swaps in a freshly loaded vault, which in passphrase mode is locked.
+// lock swaps in a vault loaded without its key file, which cannot open.
 func (e *env) lock() {
 	e.t.Helper()
 	v := vault.New(e.st, e.t.TempDir())
-	if st, err := v.Load(context.Background()); err != nil || st != vault.StateLocked {
+	if st, err := v.Load(context.Background()); err != nil || st != vault.StateKeyfileMissing {
 		e.t.Fatalf("vault state = %s, %v", st, err)
 	}
 	e.o.Vault = v
@@ -193,7 +193,7 @@ func loginViaAgent(t *testing.T, dir *rundir.Dir, srv *sshtest.Server) error {
 }
 
 func TestOpenSSH(t *testing.T) {
-	e := newEnv(t, vault.ModeKeyfile)
+	e := newEnv(t)
 	keyID, p := e.addKey("")
 	srv := sshtest.Start(t, sshtest.WithAuthorized(p.Signer.PublicKey()))
 	connID := e.addSSHConn(keyID, srv)
@@ -243,7 +243,7 @@ func mustRead(t *testing.T, path string) []byte {
 }
 
 func TestOpenSSHWithPassphraseKey(t *testing.T) {
-	e := newEnv(t, vault.ModeKeyfile)
+	e := newEnv(t)
 	keyID, p := e.addKey(keyPass)
 	srv := sshtest.Start(t, sshtest.WithAuthorized(p.Signer.PublicKey()))
 	dir, red := shortRunDir(t), redact.New()
@@ -261,7 +261,7 @@ func TestOpenSSHWithPassphraseKey(t *testing.T) {
 }
 
 func TestOpenWebDAV(t *testing.T) {
-	e := newEnv(t, vault.ModeKeyfile)
+	e := newEnv(t)
 	connID := e.addDAVConn("https://dav.example/remote.php/dav", davPass)
 	dir, red := shortRunDir(t), redact.New()
 	a, closeFn, err := e.o.Open(context.Background(), connID, dir, red)
@@ -281,7 +281,7 @@ func TestOpenWebDAV(t *testing.T) {
 }
 
 func TestOpenCloseStopsAgent(t *testing.T) {
-	e := newEnv(t, vault.ModeKeyfile)
+	e := newEnv(t)
 	keyID, p := e.addKey("")
 	srv := sshtest.Start(t, sshtest.WithAuthorized(p.Signer.PublicKey()))
 	dir := shortRunDir(t)
@@ -297,7 +297,7 @@ func TestOpenCloseStopsAgent(t *testing.T) {
 }
 
 func TestOpenLocked(t *testing.T) {
-	e := newEnv(t, vault.ModePassphrase)
+	e := newEnv(t)
 	keyID, p := e.addKey("")
 	srv := sshtest.Start(t, sshtest.WithAuthorized(p.Signer.PublicKey()))
 	sshID := e.addSSHConn(keyID, srv)
@@ -318,7 +318,7 @@ func TestOpenLocked(t *testing.T) {
 }
 
 func TestOpenUnknownConnection(t *testing.T) {
-	e := newEnv(t, vault.ModeKeyfile)
+	e := newEnv(t)
 	if _, _, err := e.o.Open(context.Background(), "nope", shortRunDir(t), redact.New()); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("err = %v, want store.ErrNotFound", err)
 	}
@@ -326,7 +326,7 @@ func TestOpenUnknownConnection(t *testing.T) {
 
 // A ciphertext moved onto another record must not open there.
 func TestOpenRejectsTransplantedSecret(t *testing.T) {
-	e := newEnv(t, vault.ModeKeyfile)
+	e := newEnv(t)
 	a := e.addDAVConn("https://a.example/", davPass)
 	sealed, err := e.st.ConnectionPassword(context.Background(), a)
 	if err != nil {
@@ -345,7 +345,7 @@ func TestOpenRejectsTransplantedSecret(t *testing.T) {
 }
 
 func TestOpenerCheck(t *testing.T) {
-	e := newEnv(t, vault.ModeKeyfile)
+	e := newEnv(t)
 	keyID, p := e.addKey(keyPass)
 	ok := sshtest.Start(t, sshtest.WithAuthorized(p.Signer.PublicKey()))
 	if err := e.o.Check(context.Background(), e.addSSHConn(keyID, ok)); err != nil {

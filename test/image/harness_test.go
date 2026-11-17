@@ -165,7 +165,7 @@ func postJSON(t *testing.T, url string, body any) int {
 func setupKeyfile(t *testing.T, name string) {
 	t.Helper()
 	code := postJSON(t, baseURL(t, name)+"/api/v1/setup", map[string]any{
-		"password": "image-test-admin-password", "node_name": "image-test", "unlock_mode": "keyfile",
+		"password": "image-test-admin-password", "node_name": "image-test",
 	})
 	if code != http.StatusCreated {
 		t.Fatalf("setup = %d", code)

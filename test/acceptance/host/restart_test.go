@@ -48,23 +48,11 @@ func exists(path string) bool {
 	return err == nil
 }
 
-// logCount is the number of run logs in the data directory: one per run
-// that started.
-func logCount(t *testing.T, s *stack) int {
-	t.Helper()
-	entries, err := os.ReadDir(filepath.Join(s.dataDir(), "logs"))
-	if err != nil {
-		return 0
-	}
-	return len(entries)
-}
-
-// Spec §16 item 7: in key file mode a restart needs nobody: the schedule
-// goes on by itself.
+// Spec §16 item 7: a restart needs nobody: the schedule goes on by itself.
 func TestRestartResumesSchedule(t *testing.T) {
 	s := up(t, nil)
 	c := s.api()
-	c.setup(adminPassword, "keyfile", "")
+	c.setup(adminPassword)
 	task, remote := scheduledSync(t, s, c, "resume")
 	waitScheduledSuccess(t, c, task)
 
@@ -75,37 +63,7 @@ func TestRestartResumesSchedule(t *testing.T) {
 		t.Fatalf("150 s after the restart the new file has not reached the remote end")
 	}
 	if st := s.api().status(); st["vault_state"] != "unlocked" {
-		t.Errorf("vault_state = %v after a restart in key file mode", st["vault_state"])
-	}
-}
-
-// In passphrase mode the schedule waits for the passphrase.
-func TestPassphraseModeWaitsForUnlock(t *testing.T) {
-	const passphrase = "acceptance vault passphrase"
-	s := up(t, nil)
-	c := s.api()
-	c.setup(adminPassword, "passphrase", passphrase)
-	task, _ := scheduledSync(t, s, c, "locked")
-	waitScheduledSuccess(t, c, task)
-
-	s.restart("tern")
-	before := logCount(t, s)
-	c = s.api()
-	deadline := time.Now().Add(150 * time.Second)
-	for time.Now().Before(deadline) {
-		if st := c.status(); st["vault_state"] != "locked" {
-			t.Fatalf("vault_state = %v after a restart in passphrase mode", st["vault_state"])
-		}
-		if n := logCount(t, s); n != before {
-			t.Fatalf("a run started while the vault was locked (%d run logs, %d before)", n, before)
-		}
-		time.Sleep(5 * time.Second)
-	}
-
-	c.login(adminPassword)
-	c.unlock(passphrase)
-	if !eventually(90*time.Second, func() bool { return logCount(t, s) > before }) {
-		t.Fatal("no run within 90 s of the unlock")
+		t.Errorf("vault_state = %v after a restart", st["vault_state"])
 	}
 }
 
@@ -166,7 +124,7 @@ func waitUploading(t *testing.T, c *client, taskID, runID string) {
 func TestStopMarksInterrupted(t *testing.T) {
 	s := up(t, nil)
 	c := s.api()
-	c.setup(adminPassword, "keyfile", "")
+	c.setup(adminPassword)
 	task := slowBackup(t, s, c)
 	runID := c.startRun(task, nil)
 	waitUploading(t, c, task, runID)
@@ -185,7 +143,7 @@ func TestStopMarksInterrupted(t *testing.T) {
 func TestKillThenRecover(t *testing.T) {
 	s := up(t, nil)
 	c := s.api()
-	c.setup(adminPassword, "keyfile", "")
+	c.setup(adminPassword)
 	task := slowBackup(t, s, c)
 	runID := c.startRun(task, nil)
 	waitUploading(t, c, task, runID)
@@ -207,7 +165,7 @@ func TestKillThenRecover(t *testing.T) {
 func TestKeyfileRemoved(t *testing.T) {
 	s := up(t, nil)
 	c := s.api()
-	c.setup(adminPassword, "keyfile", "")
+	c.setup(adminPassword)
 	key := filepath.Join(s.dirs["secrets"], "master.key")
 	if !exists(key) {
 		t.Fatalf("no %s after setup", key)
@@ -255,7 +213,7 @@ func TestBBRReported(t *testing.T) {
 	// Without the sysctls line: healthy, and the report is consistent.
 	s := up(t, nil)
 	c := s.api()
-	c.setup(adminPassword, "keyfile", "")
+	c.setup(adminPassword)
 	b := system(c)
 	t.Logf("without sysctls: %+v", b)
 	if b.Active && !b.Supported {
@@ -278,7 +236,7 @@ func TestBBRReported(t *testing.T) {
 	}
 	s2 := up(t, nil, "compose.bbr.yaml")
 	c2 := s2.api()
-	c2.setup(adminPassword, "keyfile", "")
+	c2.setup(adminPassword)
 	if b := system(c2); !b.Active || !b.Supported || b.Current != "bbr" {
 		t.Errorf("with the sysctls line: %+v, want bbr active", b)
 	}

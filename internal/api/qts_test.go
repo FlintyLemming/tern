@@ -123,13 +123,13 @@ func TestCookiePathFollowsBase(t *testing.T) {
 	h := newHarness(t)
 	h.cfg = config.Config{BasePath: "/tern"}
 	h.restart()
-	w := h.do("POST", "/tern/api/v1/setup", setupBody("keyfile"))
+	w := h.do("POST", "/tern/api/v1/setup", setupBody())
 	if c := sessionCookie(w); w.Code != http.StatusCreated || c == nil || c.Path != "/tern/" {
 		t.Fatalf("setup = %d, cookie %+v; want Path /tern/", w.Code, c)
 	}
 
 	root := newHarness(t)
-	w = root.do("POST", "/api/v1/setup", setupBody("keyfile"))
+	w = root.do("POST", "/api/v1/setup", setupBody())
 	if c := sessionCookie(w); c == nil || c.Path != "/" {
 		t.Fatalf("cookie at the root = %+v, want Path /", c)
 	}
@@ -154,13 +154,13 @@ func TestQTSSetupNeedsQTSAdmin(t *testing.T) {
 		"QTS user":       {nasSID("usersid")},
 		"unknown sid":    {nasSID("nosuchsid")},
 	} {
-		w := h.do("POST", "/tern/api/v1/setup", setupBody("keyfile"), opts...)
+		w := h.do("POST", "/tern/api/v1/setup", setupBody(), opts...)
 		if w.Code != http.StatusUnauthorized || !strings.Contains(w.Body.String(), "qts_admin_required") {
 			t.Fatalf("%s: setup = %d %s, want 401 qts_admin_required", name, w.Code, w.Body)
 		}
 	}
 	h.nothingWritten()
-	w := h.do("POST", "/tern/api/v1/setup", setupBody("keyfile"), nasSID("adminsid"))
+	w := h.do("POST", "/tern/api/v1/setup", setupBody(), nasSID("adminsid"))
 	if w.Code != http.StatusCreated {
 		t.Fatalf("setup as QTS admin = %d %s", w.Code, w.Body)
 	}
@@ -179,7 +179,7 @@ func TestQTSSetupNeedsQTSAdmin(t *testing.T) {
 
 func TestQTSSignIn(t *testing.T) {
 	h := newQTSHarness(t)
-	h.do("POST", "/tern/api/v1/setup", setupBody("keyfile"), nasSID("adminsid"))
+	h.do("POST", "/tern/api/v1/setup", setupBody(), nasSID("adminsid"))
 
 	st := decode(t, h.do("GET", "/tern/api/v1/status", nil))
 	if st["authenticated"] != false || st["platform"] != "qts" {
@@ -237,7 +237,7 @@ func TestQTSSignIn(t *testing.T) {
 
 func TestQTSUnreachableFallsBackToPassword(t *testing.T) {
 	h := newQTSHarness(t)
-	h.do("POST", "/tern/api/v1/setup", setupBody("keyfile"), nasSID("adminsid"))
+	h.do("POST", "/tern/api/v1/setup", setupBody(), nasSID("adminsid"))
 	h.cookie, h.csrf = "", ""
 	h.qts.fail(errors.New("connection refused"))
 
@@ -257,7 +257,7 @@ func TestQTSUnreachableFallsBackToPassword(t *testing.T) {
 
 func TestDockerIgnoresQTSCookie(t *testing.T) {
 	h := newHarness(t)
-	h.setup("keyfile")
+	h.setup()
 	h.cookie, h.csrf = "", ""
 	if st := h.status(); st["platform"] != "docker" {
 		t.Fatalf("platform = %v, want docker", st["platform"])
@@ -271,7 +271,7 @@ func TestDockerIgnoresQTSCookie(t *testing.T) {
 // goes by the address the proxy reports.
 func TestQTSLoginLimitPerForwardedClient(t *testing.T) {
 	h := newQTSHarness(t)
-	h.do("POST", "/tern/api/v1/setup", setupBody("keyfile"), nasSID("adminsid"))
+	h.do("POST", "/tern/api/v1/setup", setupBody(), nasSID("adminsid"))
 	h.cookie, h.csrf = "", ""
 	from := func(ip string) reqOpt {
 		return func(r *http.Request) {
@@ -289,7 +289,7 @@ func TestQTSLoginLimitPerForwardedClient(t *testing.T) {
 
 	// Elsewhere the header is anyone's to forge and is ignored.
 	d := newHarness(t)
-	d.setup("keyfile")
+	d.setup()
 	d.cookie, d.csrf = "", ""
 	for i := range 6 {
 		d.do("POST", "/api/v1/login", map[string]any{"password": "wrong-password"}, from("192.168.5."+string(rune('0'+i))))
@@ -316,7 +316,7 @@ func TestUncleanPathsServedInPlace(t *testing.T) {
 		t.Errorf("GET /tern/../api/v1/status = %d, want 404: it is outside the base path", w.Code)
 	}
 	// A write through the doubled slash reaches its handler too.
-	if w := h.do("POST", "/tern//api/v1/setup", setupBody("keyfile")); w.Code != http.StatusCreated {
+	if w := h.do("POST", "/tern//api/v1/setup", setupBody()); w.Code != http.StatusCreated {
 		t.Errorf("POST /tern//api/v1/setup = %d %s", w.Code, w.Body)
 	}
 

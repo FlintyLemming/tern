@@ -139,7 +139,7 @@ func startWithStore(ctx context.Context, cfg config.Config, version string, st *
 		slog.Warn("the data directory is not a mounted volume: setup is refused; add a volume for it, e.g. ./data:/data", "dir", cfg.DataDir)
 	}
 	if !mnt.Secrets {
-		slog.Warn("the secrets directory is not a mounted volume: key file mode is unavailable; add a volume for it, e.g. ./secrets:/secrets", "dir", cfg.SecretsDir)
+		slog.Warn("the secrets directory is not a mounted volume: setup is refused; add a volume for it, e.g. ./secrets:/secrets", "dir", cfg.SecretsDir)
 	}
 
 	h := api.New(api.Deps{

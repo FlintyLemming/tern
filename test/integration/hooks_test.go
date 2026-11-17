@@ -32,7 +32,7 @@ func storedSSH(t *testing.T) (access.Opener, string) {
 	if _, err := v.Load(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := v.Init(ctx, vault.ModeKeyfile, ""); err != nil {
+	if err := v.Init(ctx); err != nil {
 		t.Fatal(err)
 	}
 	privPEM, p, err := sshx.Generate()

@@ -62,7 +62,7 @@
     "internal": "Internal error; see the tern log",
     "already_setup": "This node has already been set up",
     "data_not_mounted": "/data is not mounted from the host; add ./data:/data to the compose file and restart",
-    "secrets_not_mounted": "/secrets is not mounted; add ./secrets:/secrets and restart, or use a passphrase instead",
+    "secrets_not_mounted": "/secrets is not mounted from the host; add ./secrets:/secrets to the compose file and restart",
     "qts_admin_required": "Sign in to QTS as an administrator to set up tern",
     "vault_locked": "The vault is locked; unlock it first",
     "vault_unavailable": "The vault cannot be opened; check the secrets directory",
@@ -76,7 +76,6 @@
     "recovery_not_confirmed": "Save the recovery information and confirm it first",
     "wrong_repo_password": "A repository already exists at this path, and this is not its password.",
     "unavailable": "Not available right now",
-    "keyfile_not_removed": "Switched, but the old key file could not be removed; delete it by hand",
     "network": "The request did not reach tern"
   },
   "field": {
@@ -130,30 +129,16 @@
   },
   "setup": {
     "title": "Set up tern",
-    "step": "Step {{n}} of 3",
-    "step1": "Administrator and node",
-    "step2": "Unlock mode",
-    "step3": "Confirm",
     "password": "Admin password",
     "password_hint": "At least 10 characters. Used to log in here.",
     "password_again": "Enter it again",
     "node_name": "Node name",
     "node_name_hint": "Lowercase letters, digits and hyphens, e.g. nas-home",
-    "mode_keyfile": "Key file (default)",
-    "mode_keyfile_desc": "Unlocks by itself after a restart, so scheduled tasks keep running. Keep the secrets directory apart from data.",
-    "mode_passphrase": "Passphrase",
-    "mode_passphrase_desc": "Safer, but after every restart someone must enter the passphrase here; until then no scheduled task runs.",
-    "passphrase": "Passphrase",
-    "passphrase_again": "Enter the passphrase again",
-    "next": "Next",
-    "back": "Back",
     "submit": "Finish setup",
-    "summary_node": "Node name",
-    "summary_mode": "Unlock mode",
-    "summary_note": "The admin password and passphrase are not shown here; make sure you keep them.",
     "no_data_title": "The data directory is not mounted",
     "no_data": "/data is not mounted from the host. If you went on, every setting would be lost when the container is recreated. Add ./data:/data to the compose file and restart.",
-    "no_secrets": "/secrets is not mounted. Add ./secrets:/secrets and restart, or use a passphrase instead."
+    "no_secrets_title": "The secrets directory is not mounted",
+    "no_secrets": "/secrets is not mounted from the host. If you went on, the stored credentials could no longer be opened once the container is recreated. Add ./secrets:/secrets to the compose file and restart."
   },
   "login": {
     "title": "Log in",
@@ -164,11 +149,12 @@
     "wait": "Too many attempts. Try again in {{n}} s"
   },
   "unlock": {
-    "title": "Unlock the vault",
-    "desc": "tern has restarted and needs the passphrase to open its stored credentials. No scheduled task runs until then.",
-    "passphrase": "Passphrase",
+    "title": "Unlock stored credentials",
+    "desc": "This node was set up by an earlier version of tern, with a separate unlock passphrase. Enter it once and tern switches to unlocking by itself; you will not need the passphrase again.",
+    "passphrase": "Unlock passphrase",
     "submit": "Unlock",
-    "wrong": "Wrong passphrase"
+    "wrong": "Wrong passphrase",
+    "no_secrets": "/secrets is not mounted, so this is asked for after every restart. Add ./secrets:/secrets to the compose file and restart; after the next unlock it will not be needed again."
   },
   "conn": {
     "title": "Connections & keys",
@@ -493,12 +479,6 @@
     "new_password_again": "New password again",
     "change_password": "Change password",
     "password_changed": "Password changed; log in again",
-    "unlock_title": "Unlock mode",
-    "unlock_current": "Now: {{mode}}",
-    "new_passphrase": "New passphrase",
-    "new_passphrase_again": "New passphrase again",
-    "switch_unlock": "Switch unlock mode",
-    "unlock_switched": "Unlock mode switched",
     "tools_title": "Bundled tools",
     "tool": "Tool",
     "tool_version": "Version",

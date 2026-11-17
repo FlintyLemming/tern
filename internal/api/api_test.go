@@ -31,6 +31,7 @@ import (
 	"tern/internal/store"
 	"tern/internal/sysinfo"
 	"tern/internal/vault"
+	"tern/internal/vault/vaulttest"
 )
 
 // Cron expressions are read in time.Local; pin it for the schedule tests.
@@ -45,6 +46,7 @@ const (
 type harness struct {
 	t       *testing.T
 	st      *store.Store
+	dbDir   string // where the store keeps tern.db
 	secrets string
 	now     time.Time
 	api     *API
@@ -143,12 +145,13 @@ func shortDir(t *testing.T) string {
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
-	st, err := store.Open(context.Background(), t.TempDir())
+	dbDir := t.TempDir()
+	st, err := store.Open(context.Background(), dbDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	h := &harness{t: t, st: st, secrets: t.TempDir(), now: time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC),
+	h := &harness{t: t, st: st, dbDir: dbDir, secrets: t.TempDir(), now: time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC),
 		dataDir: t.TempDir(), runtimeDir: shortDir(t), engines: map[string]*fake.Engine{}, restic: restictest.New(t),
 		mounts: sysinfo.Mounts{Data: true, Secrets: true}}
 	t.Cleanup(func() { h.stopCore() }) // before the store closes
@@ -294,21 +297,50 @@ func (h *harness) adopt(w *httptest.ResponseRecorder) {
 	}
 }
 
-func setupBody(mode string) map[string]any {
-	b := map[string]any{"password": adminPass, "node_name": "nas-1", "unlock_mode": mode}
-	if mode == "passphrase" {
-		b["passphrase"] = vaultPass
-	}
-	return b
+func setupBody() map[string]any {
+	return map[string]any{"password": adminPass, "node_name": "nas-1"}
 }
 
-func (h *harness) setup(mode string) {
+func (h *harness) setup() {
 	h.t.Helper()
-	w := h.do("POST", "/api/v1/setup", setupBody(mode))
+	w := h.do("POST", "/api/v1/setup", setupBody())
 	if w.Code != http.StatusCreated {
 		h.t.Fatalf("setup = %d %s", w.Code, w.Body)
 	}
 	h.adopt(w)
+}
+
+// setupLegacy gives the harness a database that tern 0.1 set up in
+// passphrase mode (vaultPass), as found by the current tern after an
+// upgrade: the vault is locked, and the harness is signed in.
+func (h *harness) setupLegacy() {
+	h.t.Helper()
+	ctx := context.Background()
+	if _, err := vaulttest.Passphrase(ctx, h.st, vaultPass); err != nil {
+		h.t.Fatal(err)
+	}
+	hash, err := auth.HashPassword(adminPass)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	for k, v := range map[string]string{metaPasswordHash: hash, metaNodeID: model.NewID(), metaNodeName: "nas-1"} {
+		if err := h.st.SetMeta(ctx, k, v); err != nil {
+			h.t.Fatal(err)
+		}
+	}
+	h.restart()
+	if h.vault.State() != vault.StateLocked {
+		h.t.Fatalf("vault state of the old database = %s, want locked", h.vault.State())
+	}
+	h.login()
+}
+
+// unlock enters the old passphrase.
+func (h *harness) unlock() {
+	h.t.Helper()
+	if w := h.do("POST", "/api/v1/unlock", map[string]any{"passphrase": vaultPass}); w.Code != http.StatusNoContent {
+		h.t.Fatalf("unlock = %d %s", w.Code, w.Body)
+	}
 }
 
 func (h *harness) login() {
@@ -374,7 +406,7 @@ func TestStatusBeforeSetup(t *testing.T) {
 
 func TestSetupThenStatus(t *testing.T) {
 	h := newHarness(t)
-	w := h.do("POST", "/api/v1/setup", setupBody("keyfile"))
+	w := h.do("POST", "/api/v1/setup", setupBody())
 	if w.Code != http.StatusCreated {
 		t.Fatalf("setup = %d %s", w.Code, w.Body)
 	}
@@ -396,8 +428,8 @@ func TestSetupThenStatus(t *testing.T) {
 
 func TestSetupTwice(t *testing.T) {
 	h := newHarness(t)
-	h.setup("keyfile")
-	wantError(t, h.do("POST", "/api/v1/setup", setupBody("keyfile")), http.StatusConflict, "already_setup")
+	h.setup()
+	wantError(t, h.do("POST", "/api/v1/setup", setupBody()), http.StatusConflict, "already_setup")
 }
 
 func TestSetupConcurrent(t *testing.T) {
@@ -408,7 +440,7 @@ func TestSetupConcurrent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			codes[i] = h.do("POST", "/api/v1/setup", setupBody("keyfile")).Code
+			codes[i] = h.do("POST", "/api/v1/setup", setupBody()).Code
 		}()
 	}
 	wg.Wait()
@@ -423,14 +455,14 @@ func TestSetupConcurrent(t *testing.T) {
 
 func TestSetupWeakPassword(t *testing.T) {
 	h := newHarness(t)
-	b := setupBody("keyfile")
+	b := setupBody()
 	b["password"] = "123456789"
 	wantField(t, wantError(t, h.do("POST", "/api/v1/setup", b), http.StatusBadRequest, "validation"), "password")
 }
 
 func TestSetupHugePassword(t *testing.T) {
 	h := newHarness(t)
-	b := setupBody("keyfile")
+	b := setupBody()
 	b["password"] = strings.Repeat("x", 1025)
 	wantField(t, wantError(t, h.do("POST", "/api/v1/setup", b), http.StatusBadRequest, "validation"), "password")
 	if n := h.metaRows(); n != 0 {
@@ -443,27 +475,35 @@ func TestSetupHugePassword(t *testing.T) {
 
 func TestSetupBadNodeName(t *testing.T) {
 	h := newHarness(t)
-	b := setupBody("keyfile")
+	b := setupBody()
 	b["node_name"] = "NAS 1"
 	wantField(t, wantError(t, h.do("POST", "/api/v1/setup", b), http.StatusBadRequest, "validation"), "node_name")
 }
 
-func TestSetupPassphraseMode(t *testing.T) {
+// The key that seals credentials is generated at setup, into the secrets
+// directory; there is no second secret to choose.
+func TestSetupCreatesKeyfile(t *testing.T) {
 	h := newHarness(t)
-	b := setupBody("passphrase")
-	delete(b, "passphrase")
-	wantField(t, wantError(t, h.do("POST", "/api/v1/setup", b), http.StatusBadRequest, "validation"), "passphrase")
-	b["unlock_mode"] = "telepathy"
-	wantField(t, wantError(t, h.do("POST", "/api/v1/setup", b), http.StatusBadRequest, "validation"), "unlock_mode")
-	if n := h.metaRows(); n != 0 {
-		t.Fatalf("meta has %d rows after rejected setups", n)
+	h.setup()
+	fi, err := os.Stat(filepath.Join(h.secrets, "master.key"))
+	if err != nil || fi.Size() != 32 || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("master.key after setup: %v %v", fi, err)
 	}
-	h.setup("passphrase")
+	h.restart()
 	if s := h.status(); s["vault_state"] != "unlocked" {
-		t.Errorf("status = %v", s)
+		t.Errorf("status after restart = %v", s)
 	}
-	if entries, _ := os.ReadDir(h.secrets); len(entries) != 0 {
-		t.Error("passphrase mode wrote into the secrets dir")
+}
+
+// The fields of the old wizard are refused, not silently dropped.
+func TestSetupRefusesUnlockMode(t *testing.T) {
+	h := newHarness(t)
+	b := setupBody()
+	b["unlock_mode"] = "passphrase"
+	b["passphrase"] = vaultPass
+	wantError(t, h.do("POST", "/api/v1/setup", b), http.StatusBadRequest, "bad_request")
+	if n := h.metaRows(); n != 0 {
+		t.Fatalf("meta has %d rows after a rejected setup", n)
 	}
 }
 
@@ -471,7 +511,7 @@ func TestSetupPassphraseMode(t *testing.T) {
 
 func TestLoginWrong(t *testing.T) {
 	h := newHarness(t)
-	h.setup("keyfile")
+	h.setup()
 	h.cookie, h.csrf = "", ""
 	w := h.do("POST", "/api/v1/login", map[string]any{"password": "wrong password!"})
 	wantError(t, w, http.StatusUnauthorized, "unauthorized")
@@ -486,7 +526,7 @@ func TestLoginWrong(t *testing.T) {
 
 func TestLoginRateLimited(t *testing.T) {
 	h := newHarness(t)
-	h.setup("keyfile")
+	h.setup()
 	h.cookie, h.csrf = "", ""
 	bad := map[string]any{"password": "wrong password!"}
 	for i := range 5 {
@@ -507,7 +547,7 @@ func TestLoginRateLimited(t *testing.T) {
 
 func TestLoginConcurrentWrong(t *testing.T) {
 	h := newHarness(t)
-	h.setup("keyfile")
+	h.setup()
 	h.cookie, h.csrf = "", ""
 	codes := make([]int, 20)
 	var wg sync.WaitGroup
@@ -530,7 +570,7 @@ func TestLoginConcurrentWrong(t *testing.T) {
 
 func TestLoginHugePassword(t *testing.T) {
 	h := newHarness(t)
-	h.setup("keyfile")
+	h.setup()
 	h.cookie, h.csrf = "", ""
 	huge := map[string]any{"password": strings.Repeat("x", 1025)}
 	for range 6 {
@@ -541,7 +581,7 @@ func TestLoginHugePassword(t *testing.T) {
 
 func TestProtectedNeedsSession(t *testing.T) {
 	h := newHarness(t)
-	h.setup("keyfile")
+	h.setup()
 	h.cookie, h.csrf = "", ""
 	wantError(t, h.do("GET", "/api/v1/session", nil), http.StatusUnauthorized, "unauthorized")
 	h.cookie = "forged-token"
@@ -550,7 +590,7 @@ func TestProtectedNeedsSession(t *testing.T) {
 
 func TestSessionReturnsCSRF(t *testing.T) {
 	h := newHarness(t)
-	h.setup("keyfile")
+	h.setup()
 	w := h.do("GET", "/api/v1/session", nil)
 	if w.Code != http.StatusOK || decode(t, w)["csrf_token"] != h.csrf {
 		t.Fatalf("session = %d %s, want csrf_token %q", w.Code, w.Body, h.csrf)
@@ -559,7 +599,7 @@ func TestSessionReturnsCSRF(t *testing.T) {
 
 func TestWriteNeedsCSRF(t *testing.T) {
 	h := newHarness(t)
-	h.setup("keyfile")
+	h.setup()
 	wantError(t, h.do("POST", "/api/v1/logout", nil, noCSRF()), http.StatusForbidden, "csrf")
 	wantError(t, h.do("POST", "/api/v1/logout", nil, header("X-CSRF-Token", "wrong")), http.StatusForbidden, "csrf")
 	if w := h.do("POST", "/api/v1/logout", nil); w.Code != http.StatusNoContent {
@@ -569,7 +609,7 @@ func TestWriteNeedsCSRF(t *testing.T) {
 
 func TestLogoutInvalidates(t *testing.T) {
 	h := newHarness(t)
-	h.setup("keyfile")
+	h.setup()
 	if w := h.do("POST", "/api/v1/logout", nil); w.Code != http.StatusNoContent {
 		t.Fatalf("logout = %d", w.Code)
 	}
@@ -578,7 +618,7 @@ func TestLogoutInvalidates(t *testing.T) {
 
 func TestSecureCookieBehindTLS(t *testing.T) {
 	h := newHarness(t)
-	w := h.do("POST", "/api/v1/setup", setupBody("keyfile"))
+	w := h.do("POST", "/api/v1/setup", setupBody())
 	if c := sessionCookie(w); c == nil || c.Secure {
 		t.Fatalf("plain HTTP cookie = %+v, want one without Secure", c)
 	}
@@ -596,36 +636,69 @@ func (h *harness) addGuardedRoute() {
 	}, NeedSession, NeedUnlocked)
 }
 
+// A database of tern 0.1 in passphrase mode is locked after the upgrade;
+// entering the old passphrase once opens it and moves it to a key file.
 func TestUnlockFlow(t *testing.T) {
 	h := newHarness(t)
-	h.setup("passphrase")
-	h.restart()
+	h.setupLegacy()
 	h.addGuardedRoute()
 	if s := h.status(); s["vault_state"] != "locked" {
-		t.Fatalf("status after restart = %v", s)
+		t.Fatalf("status = %v", s)
 	}
-	h.login()
 	wantError(t, h.do("GET", "/api/v1/test-unlocked", nil), http.StatusServiceUnavailable, "vault_locked")
 	wantError(t, h.do("POST", "/api/v1/unlock", map[string]any{"passphrase": "not the passphrase"}), http.StatusForbidden, "forbidden")
 	wantField(t, wantError(t, h.do("POST", "/api/v1/unlock", map[string]any{"passphrase": strings.Repeat("x", 1025)}), http.StatusBadRequest, "validation"), "passphrase")
-	if w := h.do("POST", "/api/v1/unlock", map[string]any{"passphrase": vaultPass}); w.Code != http.StatusNoContent {
-		t.Fatalf("unlock = %d %s", w.Code, w.Body)
-	}
+	h.unlock()
 	if w := h.do("GET", "/api/v1/test-unlocked", nil); w.Code != http.StatusOK {
 		t.Fatalf("guarded route after unlock = %d %s", w.Code, w.Body)
+	}
+	if h.vault.Mode() != vault.ModeKeyfile {
+		t.Errorf("vault mode after unlock = %s, want keyfile", h.vault.Mode())
+	}
+	if _, err := os.Stat(filepath.Join(h.secrets, "master.key")); err != nil {
+		t.Errorf("no key file after unlock: %v", err)
+	}
+	// From now on it opens by itself.
+	h.restart()
+	if s := h.status(); s["vault_state"] != "unlocked" {
+		t.Fatalf("status after restart = %v", s)
+	}
+	h.login()
+	h.addGuardedRoute()
+	if w := h.do("GET", "/api/v1/test-unlocked", nil); w.Code != http.StatusOK {
+		t.Fatalf("guarded route after restart = %d %s", w.Code, w.Body)
+	}
+}
+
+// Without a mounted secrets directory the key file would vanish with the
+// container, so an old vault stays in passphrase mode.
+func TestUnlockKeepsPassphraseWithoutSecretsMount(t *testing.T) {
+	h := newHarness(t)
+	h.mounts.Secrets = false
+	h.setupLegacy()
+	h.unlock()
+	if h.vault.State() != vault.StateUnlocked || h.vault.Mode() != vault.ModePassphrase {
+		t.Fatalf("state=%s mode=%s, want unlocked/passphrase", h.vault.State(), h.vault.Mode())
+	}
+	if entries, _ := os.ReadDir(h.secrets); len(entries) != 0 {
+		t.Errorf("the unmounted secrets directory has %d entries", len(entries))
+	}
+	h.restart()
+	if s := h.status(); s["vault_state"] != "locked" {
+		t.Fatalf("status after restart = %v", s)
 	}
 }
 
 func TestUnlockNeedsSession(t *testing.T) {
 	h := newHarness(t)
-	h.setup("passphrase")
-	h.restart()
+	h.setupLegacy()
+	h.cookie, h.csrf = "", ""
 	wantError(t, h.do("POST", "/api/v1/unlock", map[string]any{"passphrase": vaultPass}), http.StatusUnauthorized, "unauthorized")
 }
 
 func TestVaultUnavailable(t *testing.T) {
 	h := newHarness(t)
-	h.setup("keyfile")
+	h.setup()
 	if err := os.Remove(filepath.Join(h.secrets, "master.key")); err != nil {
 		t.Fatal(err)
 	}
@@ -676,7 +749,7 @@ func TestPanicBecomes500(t *testing.T) {
 func TestNoHashInResponses(t *testing.T) {
 	h := newHarness(t)
 	var bodies []string
-	w := h.do("POST", "/api/v1/setup", setupBody("keyfile"))
+	w := h.do("POST", "/api/v1/setup", setupBody())
 	h.adopt(w)
 	bodies = append(bodies, w.Body.String())
 	bodies = append(bodies, h.do("POST", "/api/v1/login", map[string]any{"password": adminPass}).Body.String())
@@ -694,11 +767,11 @@ func TestNoHashInResponses(t *testing.T) {
 
 func TestUnknownFieldRejected(t *testing.T) {
 	h := newHarness(t)
-	b := setupBody("keyfile")
+	b := setupBody()
 	b["is_admin"] = true
 	wantError(t, h.do("POST", "/api/v1/setup", b), http.StatusBadRequest, "bad_request")
 	wantError(t, h.do("POST", "/api/v1/setup", `{"password":"x"} trailing`), http.StatusBadRequest, "bad_request")
-	raw, _ := json.Marshal(setupBody("keyfile"))
+	raw, _ := json.Marshal(setupBody())
 	wantError(t, h.do("POST", "/api/v1/setup", string(raw), header("Content-Type", "text/plain")), http.StatusBadRequest, "bad_request")
 	if n := h.metaRows(); n != 0 {
 		t.Errorf("meta has %d rows after rejected requests", n)
@@ -718,7 +791,7 @@ func TestSetupSurvivesClientDisconnect(t *testing.T) {
 	h := newHarness(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	h.do("POST", "/api/v1/setup", setupBody("keyfile"), func(r *http.Request) { *r = *r.WithContext(ctx) })
+	h.do("POST", "/api/v1/setup", setupBody(), func(r *http.Request) { *r = *r.WithContext(ctx) })
 	if n := h.metaRows(); n != 0 && h.status()["setup_required"] != false {
 		t.Fatalf("setup stopped half way: %d meta rows but setup_required is still true", n)
 	}
@@ -728,54 +801,51 @@ func TestSetupSurvivesClientDisconnect(t *testing.T) {
 }
 
 // The vault was initialized by an attempt that died before the admin password
-// was stored. A retry must finish the job with the retry's choices.
+// was stored. A retry must finish the job.
 func TestSetupResumesAfterHalfFinishedAttempt(t *testing.T) {
 	ctx := context.Background()
-	t.Run("same process, new passphrase wins", func(t *testing.T) {
+	t.Run("same process", func(t *testing.T) {
 		h := newHarness(t)
-		if err := h.vault.Init(ctx, vault.ModePassphrase, "the first attempt's phrase"); err != nil {
+		if err := h.vault.Init(ctx); err != nil {
 			t.Fatal(err)
 		}
-		h.setup("passphrase")
-		h.restart()
-		h.login()
-		wantError(t, h.do("POST", "/api/v1/unlock", map[string]any{"passphrase": "the first attempt's phrase"}), http.StatusForbidden, "forbidden")
-		if w := h.do("POST", "/api/v1/unlock", map[string]any{"passphrase": vaultPass}); w.Code != http.StatusNoContent {
-			t.Fatalf("unlock with the retry's passphrase = %d %s", w.Code, w.Body)
-		}
-	})
-	t.Run("same process, mode can change", func(t *testing.T) {
-		h := newHarness(t)
-		if err := h.vault.Init(ctx, vault.ModePassphrase, "the first attempt's phrase"); err != nil {
-			t.Fatal(err)
-		}
-		h.setup("keyfile")
+		h.setup()
 		h.restart()
 		if s := h.status(); s["vault_state"] != "unlocked" || s["setup_required"] != false {
 			t.Fatalf("status = %v", s)
 		}
 	})
-	t.Run("after restart, keyfile", func(t *testing.T) {
+	t.Run("after restart", func(t *testing.T) {
 		h := newHarness(t)
-		if err := h.vault.Init(ctx, vault.ModeKeyfile, ""); err != nil {
+		if err := h.vault.Init(ctx); err != nil {
 			t.Fatal(err)
 		}
 		h.restart()
-		h.setup("keyfile")
+		h.setup()
 	})
-	t.Run("after restart, locked vault needs the original passphrase", func(t *testing.T) {
+	t.Run("after restart, key file gone", func(t *testing.T) {
 		h := newHarness(t)
-		if err := h.vault.Init(ctx, vault.ModePassphrase, vaultPass); err != nil {
+		if err := h.vault.Init(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(filepath.Join(h.secrets, "master.key")); err != nil {
 			t.Fatal(err)
 		}
 		h.restart()
-		b := setupBody("passphrase")
-		b["passphrase"] = "not the original one"
-		wantError(t, h.do("POST", "/api/v1/setup", b), http.StatusConflict, "conflict")
-		wantError(t, h.do("POST", "/api/v1/setup", setupBody("keyfile")), http.StatusConflict, "conflict")
+		wantError(t, h.do("POST", "/api/v1/setup", setupBody()), http.StatusConflict, "conflict")
 		if h.status()["setup_required"] != true {
 			t.Fatal("a refused retry completed setup")
 		}
-		h.setup("passphrase")
+	})
+	t.Run("after upgrade, passphrase-mode vault of tern 0.1", func(t *testing.T) {
+		h := newHarness(t)
+		if _, err := vaulttest.Passphrase(ctx, h.st, vaultPass); err != nil {
+			t.Fatal(err)
+		}
+		h.restart()
+		wantError(t, h.do("POST", "/api/v1/setup", setupBody()), http.StatusConflict, "conflict")
+		if h.status()["setup_required"] != true {
+			t.Fatal("a refused retry completed setup")
+		}
 	})
 }

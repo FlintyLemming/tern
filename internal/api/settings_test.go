@@ -25,7 +25,7 @@ func TestSettingsDefaults(t *testing.T) {
 	h := readyHarness(t)
 	s := h.settings()
 	if s["node_name"] != "nas-1" || s["max_concurrent"] != float64(1) || s["log_keep_days"] != float64(90) ||
-		s["log_keep_runs"] != float64(200) || s["unlock_mode"] != "keyfile" || len(s) != 5 {
+		s["log_keep_runs"] != float64(200) || len(s) != 4 {
 		t.Errorf("settings = %v", s)
 	}
 }
@@ -122,60 +122,46 @@ func TestChangePasswordWrongCurrent(t *testing.T) {
 	h.settings() // the session survives
 }
 
-func TestSwitchUnlockMode(t *testing.T) {
-	h := readyHarness(t) // keyfile mode
+// What tern 0.1 sealed under a passphrase-mode vault still opens after the
+// vault moved to a key file: the data key does not change.
+func TestOldPassphraseVaultKeepsCredentials(t *testing.T) {
 	var gotPass string
 	dav := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, gotPass, _ = r.BasicAuth()
 		w.WriteHeader(http.StatusMultiStatus)
 	}))
 	defer dav.Close()
+
+	h := newHarness(t)
+	h.mounts.Secrets = false // keeps the vault in passphrase mode while the connection is made
+	h.setupLegacy()
+	h.unlock()
 	b := davBody("dav")
 	b["url"] = dav.URL + "/dav/"
 	conn := wantStatus(t, h.do("POST", "/api/v1/connections", b), http.StatusCreated)
 
-	body := map[string]any{"current_password": adminPass, "mode": "passphrase", "passphrase": vaultPass}
-	if w := h.do("POST", "/api/v1/settings/unlock-mode", body); w.Code != http.StatusNoContent {
-		t.Fatalf("switch = %d %s", w.Code, w.Body)
-	}
-	if s := h.settings(); s["unlock_mode"] != "passphrase" {
-		t.Errorf("settings = %v", s)
-	}
-	// What was sealed before still opens: the data key did not change.
-	if res := h.testConn(conn["id"].(string)); res["ok"] != true || gotPass != davPass {
-		t.Errorf("connection test after the switch = %v, password reached the server: %v", res, gotPass == davPass)
-	}
-	// After a restart the node waits for the passphrase.
+	h.mounts.Secrets = true
 	h.restart()
-	if h.vault.State() != vault.StateLocked {
-		t.Fatalf("vault state after restart = %s, want locked", h.vault.State())
-	}
 	h.login()
-	if w := h.do("POST", "/api/v1/unlock", map[string]any{"passphrase": vaultPass}); w.Code != http.StatusNoContent {
-		t.Fatalf("unlock = %d %s", w.Code, w.Body)
-	}
-	if res := h.testConn(conn["id"].(string)); res["ok"] != true {
-		t.Errorf("connection test after restart and unlock = %v", res)
-	}
-	// And back.
-	if w := h.do("POST", "/api/v1/settings/unlock-mode", map[string]any{"current_password": adminPass, "mode": "keyfile"}); w.Code != http.StatusNoContent {
-		t.Fatalf("switch back = %d %s", w.Code, w.Body)
+	h.unlock()
+	if h.vault.Mode() != vault.ModeKeyfile {
+		t.Fatalf("vault mode after unlock = %s", h.vault.Mode())
 	}
 	h.restart()
 	if h.vault.State() != vault.StateUnlocked {
-		t.Errorf("vault state after switching back and restarting = %s", h.vault.State())
+		t.Fatalf("vault state after restart = %s, want unlocked", h.vault.State())
+	}
+	h.login()
+	if res := h.testConn(conn["id"].(string)); res["ok"] != true || gotPass != davPass {
+		t.Errorf("connection test = %v, password reached the server: %v", res, gotPass == davPass)
 	}
 }
 
-func TestSwitchUnlockModeValidation(t *testing.T) {
+func TestUnlockModeEndpointIsGone(t *testing.T) {
 	h := readyHarness(t)
-	e := wantError(t, h.do("POST", "/api/v1/settings/unlock-mode", map[string]any{"current_password": adminPass, "mode": "passphrase", "passphrase": "short"}), http.StatusBadRequest, "validation")
-	wantField(t, e, "passphrase")
-	e = wantError(t, h.do("POST", "/api/v1/settings/unlock-mode", map[string]any{"current_password": adminPass, "mode": "magic"}), http.StatusBadRequest, "validation")
-	wantField(t, e, "mode")
-	wantError(t, h.do("POST", "/api/v1/settings/unlock-mode", map[string]any{"current_password": "wrong password!", "mode": "passphrase", "passphrase": vaultPass}), http.StatusForbidden, "forbidden")
-	if s := h.settings(); s["unlock_mode"] != "keyfile" {
-		t.Errorf("settings = %v", s)
+	w := h.do("POST", "/api/v1/settings/unlock-mode", map[string]any{"current_password": adminPass, "mode": "passphrase", "passphrase": vaultPass})
+	if w.Code != http.StatusNotFound && w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("POST /settings/unlock-mode = %d %s", w.Code, w.Body)
 	}
 }
 

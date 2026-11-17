@@ -282,13 +282,10 @@ func (c *client) adoptCSRF(out struct {
 	c.csrf = out.CSRF
 }
 
-// setup walks the wizard's request; passphrase only in passphrase mode.
-func (c *client) setup(password, mode, passphrase string) {
+// setup walks the wizard's request.
+func (c *client) setup(password string) {
 	c.t.Helper()
-	body := map[string]any{"password": password, "node_name": "acceptance", "unlock_mode": mode}
-	if mode == "passphrase" {
-		body["passphrase"] = passphrase
-	}
+	body := map[string]any{"password": password, "node_name": "acceptance"}
 	var out struct {
 		CSRF string `json:"csrf_token"`
 	}
@@ -303,11 +300,6 @@ func (c *client) login(password string) {
 	}
 	c.must(http.StatusOK, "POST", "/api/v1/login", map[string]any{"password": password}, &out)
 	c.adoptCSRF(out)
-}
-
-func (c *client) unlock(passphrase string) {
-	c.t.Helper()
-	c.must(http.StatusNoContent, "POST", "/api/v1/unlock", map[string]any{"passphrase": passphrase}, nil)
 }
 
 // status is GET /api/v1/status, which needs no session.

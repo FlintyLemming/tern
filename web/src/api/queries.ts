@@ -21,7 +21,6 @@ import type {
   SystemInfo,
   Task,
   TestResult,
-  UnlockMode,
 } from './types'
 
 export interface RunFilter {
@@ -72,7 +71,7 @@ export const useSettings = () => useQuery({ queryKey: qk.settings, queryFn: () =
 export function useSaveSettings() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (s: Omit<Settings, 'unlock_mode'>) => request<Settings>('PUT', '/api/v1/settings', s),
+    mutationFn: (s: Settings) => request<Settings>('PUT', '/api/v1/settings', s),
     onSuccess: (s) => qc.setQueryData(qk.settings, s),
   })
 }
@@ -81,15 +80,6 @@ export const useChangePassword = () =>
   useMutation({
     mutationFn: (b: { current_password: string; new_password: string }) => request<void>('POST', '/api/v1/settings/password', b),
   })
-
-export function useSwitchUnlockMode() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (b: { current_password: string; mode: UnlockMode; passphrase?: string }) =>
-      request<void>('POST', '/api/v1/settings/unlock-mode', b),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.settings }),
-  })
-}
 
 export const fetchSession = () => request<CsrfToken>('GET', '/api/v1/session')
 

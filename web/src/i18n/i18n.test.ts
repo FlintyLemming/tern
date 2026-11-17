@@ -31,7 +31,7 @@ const errorCodes = [
   'validation', 'bad_request', 'not_found', 'conflict', 'in_use', 'unauthorized', 'forbidden', 'csrf', 'rate_limited',
   'internal', 'already_setup', 'vault_locked', 'vault_unavailable', 'host_key_required', 'passphrase_required',
   'bad_passphrase', 'unsupported_key', 'unreachable', 'task_active', 'paused', 'recovery_not_confirmed',
-  'wrong_repo_password', 'unavailable', 'keyfile_not_removed', 'network', 'qts_admin_required',
+  'wrong_repo_password', 'unavailable', 'network', 'qts_admin_required',
 ]
 const fieldCodes = [
   'required', 'invalid', 'too_long', 'too_short', 'not_found', 'not_allowed', 'immutable', 'overlaps', 'never_fires',
@@ -63,7 +63,7 @@ it('switches the wording with the platform', async () => {
   expect(t()).toBe('容器内')
   applyPlatform('qts')
   expect(t()).toBe('本机（NAS）')
-  expect(i18n.t('setup.step1')).toBe('管理员与节点') // keys without a QTS text stay
+  expect(i18n.t('setup.node_name')).toBe('节点名') // keys without a QTS text stay
   await i18n.changeLanguage('en')
   expect(t()).toBe('On this NAS')
   applyPlatform('docker')

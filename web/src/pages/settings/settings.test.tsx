@@ -8,7 +8,7 @@ import { SettingsPage } from './SettingsPage'
 
 afterEach(() => vi.unstubAllGlobals())
 
-const settings = { node_name: 'nas-home', max_concurrent: 1, log_keep_days: 90, log_keep_runs: 200, unlock_mode: 'keyfile' }
+const settings = { node_name: 'nas-home', max_concurrent: 1, log_keep_days: 90, log_keep_runs: 200 }
 
 function renderSettings(routes: Record<string, Reply | Reply[]> = {}, sys = system) {
   const f = fakeFetch({ 'GET /api/v1/system': { body: sys }, 'GET /api/v1/settings': { body: settings }, ...routes })
@@ -48,7 +48,7 @@ it('validates concurrency range', async () => {
 })
 
 it('change password redirects to login', async () => {
-  const { f, user } = renderSettings({ 'POST /api/v1/settings/password': { status: 204 } })
+  const { f, user, qc } = renderSettings({ 'POST /api/v1/settings/password': { status: 204 } })
   const card = (await screen.findByRole('heading', { name: '修改管理员密码' })).closest('section')!
   await user.type(within(card).getByLabelText('当前密码'), 'old password 1')
   await user.type(within(card).getByLabelText('新密码'), 'new password 22')
@@ -56,6 +56,8 @@ it('change password redirects to login', async () => {
   await user.click(within(card).getByRole('button', { name: '修改密码' }))
   expect(await screen.findByTestId('loc')).toHaveTextContent('/login')
   expect(f.of('POST', '/api/v1/settings/password')[0].body).toEqual({ current_password: 'old password 1', new_password: 'new password 22' })
+  await waitFor(() => expect(inMutationCache(qc, 'new password 22')).toBe(false))
+  expect(inMutationCache(qc, 'old password 1')).toBe(false)
 })
 
 it('change password checks the new one locally', async () => {
@@ -69,23 +71,11 @@ it('change password checks the new one locally', async () => {
   expect(f.of('POST', '/api/v1/settings/password')).toHaveLength(0)
 })
 
-it('switch to passphrase requires two matching entries', async () => {
-  const { f, user } = renderSettings({ 'POST /api/v1/settings/unlock-mode': { status: 204 } })
-  const card = (await screen.findByRole('heading', { name: '解锁方式' })).closest('section')!
-  await waitFor(() => expect(within(card).getByText(/当前：密钥文件/)).toBeInTheDocument())
-  await user.click(within(card).getByRole('radio', { name: /^口令/ }))
-  await user.type(within(card).getByLabelText('当前密码'), 'admin password 1')
-  await user.type(within(card).getByLabelText('新口令'), 'a long passphrase')
-  await user.type(within(card).getByLabelText('再输一遍新口令'), 'a long passphrasX')
-  await user.click(within(card).getByRole('button', { name: '切换解锁方式' }))
-  expect(within(card).getByText('两次输入不一致')).toBeInTheDocument()
-  expect(f.of('POST', '/api/v1/settings/unlock-mode')).toHaveLength(0)
-  await user.clear(within(card).getByLabelText('再输一遍新口令'))
-  await user.type(within(card).getByLabelText('再输一遍新口令'), 'a long passphrase')
-  await user.click(within(card).getByRole('button', { name: '切换解锁方式' }))
-  await waitFor(() => expect(f.of('POST', '/api/v1/settings/unlock-mode')).toHaveLength(1))
-  expect(f.of('POST', '/api/v1/settings/unlock-mode')[0].body).toEqual({ current_password: 'admin password 1', mode: 'passphrase', passphrase: 'a long passphrase' })
-  await waitFor(() => expect(within(card).getByLabelText('当前密码')).toHaveValue(''))
+it('has no unlock mode to choose: the admin password is the only one', async () => {
+  renderSettings()
+  expect(await screen.findByRole('heading', { name: '修改管理员密码' })).toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: '解锁方式' })).toBeNull()
+  expect(screen.queryByText(/口令/)).toBeNull()
 })
 
 it('missing tool flagged', async () => {
@@ -107,17 +97,4 @@ it('language switch persists', async () => {
 it('explains a zone the browser cannot name', async () => {
   renderSettings({}, { ...system, timezone: 'Local' })
   expect(await screen.findByText('容器没有设置 TZ 环境变量，界面上的时间按 UTC 显示。')).toBeInTheDocument()
-})
-
-it('switching unlock mode leaves no passphrase in memory', async () => {
-  const { user, qc } = renderSettings({ 'POST /api/v1/settings/unlock-mode': { status: 204 } })
-  const card = (await screen.findByRole('heading', { name: '解锁方式' })).closest('section')!
-  await user.click(within(card).getByRole('radio', { name: /^口令/ }))
-  await user.type(within(card).getByLabelText('当前密码'), 'admin password 1')
-  await user.type(within(card).getByLabelText('新口令'), 'secret-passphrase-zz')
-  await user.type(within(card).getByLabelText('再输一遍新口令'), 'secret-passphrase-zz')
-  await user.click(within(card).getByRole('button', { name: '切换解锁方式' }))
-  await waitFor(() => expect(within(card).getByLabelText('当前密码')).toHaveValue(''))
-  await waitFor(() => expect(inMutationCache(qc, 'secret-passphrase-zz')).toBe(false))
-  expect(inMutationCache(qc, 'admin password 1')).toBe(false)
 })

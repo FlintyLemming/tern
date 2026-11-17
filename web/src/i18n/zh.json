@@ -62,7 +62,7 @@
     "internal": "服务器内部错误，详见 tern 的日志",
     "already_setup": "这个节点已经初始化过了",
     "data_not_mounted": "/data 没有挂载到宿主机，在 compose 文件里加上 ./data:/data 后重启",
-    "secrets_not_mounted": "/secrets 没有挂载，加上 ./secrets:/secrets 后重启，或者改用口令解锁",
+    "secrets_not_mounted": "/secrets 没有挂载，在 compose 文件里加上 ./secrets:/secrets 后重启",
     "qts_admin_required": "要先以管理员身份登录 QTS，才能初始化 tern",
     "vault_locked": "保险箱已锁定，请先解锁",
     "vault_unavailable": "保险箱打不开，检查 secrets 目录",
@@ -76,7 +76,6 @@
     "recovery_not_confirmed": "请先保存恢复信息并勾选确认",
     "wrong_repo_password": "这个路径下已有仓库，密码不对。",
     "unavailable": "暂时无法生成",
-    "keyfile_not_removed": "已切换，但旧的密钥文件没能删除，请手动删除",
     "network": "网络不通，请求没有到达 tern"
   },
   "field": {
@@ -130,30 +129,16 @@
   },
   "setup": {
     "title": "初始化 tern",
-    "step": "第 {{n}} 步，共 3 步",
-    "step1": "管理员与节点",
-    "step2": "解锁方式",
-    "step3": "确认",
     "password": "管理员密码",
     "password_hint": "至少 10 个字符。登录这个界面用。",
     "password_again": "再输一遍",
     "node_name": "节点名",
     "node_name_hint": "小写字母、数字、连字符，比如 nas-home",
-    "mode_keyfile": "密钥文件（默认）",
-    "mode_keyfile_desc": "重启后自动解锁，计划任务照常运行。secrets 目录要和 data 分开保管。",
-    "mode_passphrase": "口令",
-    "mode_passphrase_desc": "更安全，但每次重启后要在界面输入口令，解锁前计划任务不会运行。",
-    "passphrase": "口令",
-    "passphrase_again": "再输一遍口令",
-    "next": "下一步",
-    "back": "上一步",
     "submit": "完成初始化",
-    "summary_node": "节点名",
-    "summary_mode": "解锁方式",
-    "summary_note": "管理员密码和口令不会显示在这里，请自己记好。",
     "no_data_title": "数据目录没有挂载",
     "no_data": "/data 没有挂载到宿主机。现在继续的话，所有设置会在容器重建时丢失。在 compose 文件里加上 ./data:/data 后重启。",
-    "no_secrets": "/secrets 没有挂载。加上 ./secrets:/secrets 后重启，或者改用口令解锁。"
+    "no_secrets_title": "secrets 目录没有挂载",
+    "no_secrets": "/secrets 没有挂载到宿主机。现在继续的话，容器重建后保存的凭据就再也打不开。在 compose 文件里加上 ./secrets:/secrets 后重启。"
   },
   "login": {
     "title": "登录",
@@ -164,11 +149,12 @@
     "wait": "尝试次数太多，{{n}} 秒后再试"
   },
   "unlock": {
-    "title": "解锁保险箱",
-    "desc": "tern 重启过，要输入口令才能打开保存的凭据。解锁前计划任务不会运行。",
-    "passphrase": "口令",
+    "title": "解锁保存的凭据",
+    "desc": "这个节点是用旧版本 tern 初始化的，当时设了一个单独的解锁口令。输入一次以后，tern 会改为自动解锁，以后不再需要这个口令。",
+    "passphrase": "解锁口令",
     "submit": "解锁",
-    "wrong": "口令不对"
+    "wrong": "口令不对",
+    "no_secrets": "/secrets 没有挂载，所以每次重启后还要输入一次。在 compose 文件里加上 ./secrets:/secrets 后重启，下次解锁后就不再需要了。"
   },
   "conn": {
     "title": "连接与密钥",
@@ -493,12 +479,6 @@
     "new_password_again": "再输一遍新密码",
     "change_password": "修改密码",
     "password_changed": "密码已修改，请重新登录",
-    "unlock_title": "解锁方式",
-    "unlock_current": "当前：{{mode}}",
-    "new_passphrase": "新口令",
-    "new_passphrase_again": "再输一遍新口令",
-    "switch_unlock": "切换解锁方式",
-    "unlock_switched": "解锁方式已切换",
     "tools_title": "内置工具",
     "tool": "工具",
     "tool_version": "版本",

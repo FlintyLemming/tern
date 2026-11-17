@@ -1,7 +1,9 @@
 package api
 
 import (
+	"context"
 	"errors"
+	"log/slog"
 	"math"
 	"net/http"
 	"strconv"
@@ -66,6 +68,9 @@ func (a *API) handleSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"csrf_token": sessionFrom(r).csrf})
 }
 
+// handleUnlock opens a vault that tern 0.1 left in passphrase mode, and
+// moves it to a key file so the passphrase is never asked for again. Vaults
+// set up since unlock by themselves and never come here.
 func (a *API) handleUnlock(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Passphrase string `json:"passphrase"`
@@ -92,6 +97,7 @@ func (a *API) handleUnlock(w http.ResponseWriter, r *http.Request) {
 	err := a.d.Vault.Unlock(r.Context(), req.Passphrase)
 	switch {
 	case err == nil:
+		a.convertToKeyfile(context.WithoutCancel(r.Context()))
 		a.syncPaused() // scheduling resumes
 		w.WriteHeader(http.StatusNoContent)
 	case errors.Is(err, vault.ErrWrongPassphrase):
@@ -99,4 +105,23 @@ func (a *API) handleUnlock(w http.ResponseWriter, r *http.Request) {
 	default:
 		internalError(w, r, err)
 	}
+}
+
+// convertToKeyfile ends passphrase mode for an open vault. Without a mounted
+// secrets directory the key file would be lost with the container (and the
+// credentials with it), so the vault then stays in passphrase mode. A
+// failure is only logged: the vault is open either way.
+func (a *API) convertToKeyfile(ctx context.Context) {
+	if a.d.Vault.Mode() != vault.ModePassphrase {
+		return
+	}
+	if !a.d.Mounts.Secrets {
+		slog.Warn("the vault stays in passphrase mode: the secrets directory is not a mounted volume; add a volume for it, e.g. ./secrets:/secrets")
+		return
+	}
+	if err := a.d.Vault.ConvertToKeyfile(ctx); err != nil {
+		slog.Error("the vault stays in passphrase mode: moving it to a key file failed", "err", err)
+		return
+	}
+	slog.Info("the vault moved from passphrase mode to a key file; it unlocks by itself from now on")
 }

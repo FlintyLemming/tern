@@ -16,7 +16,6 @@ export const TERMINAL: Status[] = ['success', 'warning', 'partial', 'failed', 'i
 export const isTerminal = (s: Status) => TERMINAL.includes(s)
 
 export type VaultState = 'uninitialized' | 'unlocked' | 'locked' | 'keyfile_missing' | 'keyfile_mismatch'
-export type UnlockMode = 'keyfile' | 'passphrase'
 export type ErrKind = '' | 'network' | 'unknown' | 'auth' | 'host_key' | 'config' | 'data' | 'guard'
 
 // Whether /data and /secrets are volumes mounted into the container.
@@ -242,7 +241,6 @@ export interface Settings {
   max_concurrent: number
   log_keep_days: number
   log_keep_runs: number
-  unlock_mode?: UnlockMode
 }
 
 export interface BBR {

@@ -4,10 +4,9 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
 import { ApiError } from '../../api/client'
 import { errorText, fieldCodes, fieldText } from '../../api/errors'
-import { forgetSession, useChangePassword, useSaveSettings, useSettings, useSwitchUnlockMode, useSystem } from '../../api/queries'
-import type { Settings, UnlockMode } from '../../api/types'
+import { forgetSession, useChangePassword, useSaveSettings, useSettings, useSystem } from '../../api/queries'
+import type { Settings } from '../../api/types'
 import { setLang, type Lang } from '../../i18n'
-import { cx } from '../../lib/cx'
 import { zoneLabel } from '../../lib/format'
 import { NODE_NAME_RE, secretError } from '../../lib/validate'
 import { Banner } from '../../ui/Banner'
@@ -163,93 +162,6 @@ function ChangePassword() {
   )
 }
 
-function UnlockModeCard({ current }: { current?: UnlockMode }) {
-  const { t } = useTranslation()
-  const toast = useToast()
-  const sw = useSwitchUnlockMode()
-  const [mode, setMode] = useState<UnlockMode>(current === 'passphrase' ? 'keyfile' : 'passphrase')
-  const [cur, setCur] = useState('')
-  const [pp, setPp] = useState('')
-  const [again, setAgain] = useState('')
-  const [errs, setErrs] = useState<Errs>({})
-  const [other, setOther] = useState<string>()
-
-  const clear = () => {
-    setCur('')
-    setPp('')
-    setAgain('')
-  }
-  const submit = (e: FormEvent) => {
-    e.preventDefault()
-    if (sw.isPending) return
-    setOther(undefined)
-    const local: Errs = {}
-    if (!cur) local.cur = t('v.required')
-    if (mode === 'passphrase') {
-      const pe = secretError(pp)
-      if (pe) local.pp = t(pe)
-      else if (again !== pp) local.again = t('v.mismatch')
-    }
-    setErrs(local)
-    if (Object.keys(local).length) return
-    sw.mutate(
-      { current_password: cur, mode, ...(mode === 'passphrase' ? { passphrase: pp } : {}) },
-      {
-        onSuccess: () => {
-          sw.reset() // the request held the password and the passphrase
-          clear()
-          toast(t('settings.unlock_switched'))
-        },
-        onError: (er) => {
-          sw.reset()
-          setCur('')
-          if (er instanceof ApiError && er.status === 403) setErrs({ cur: t('error.forbidden') })
-          else if (fieldCodes(er).passphrase) setErrs({ pp: fieldText(t, fieldCodes(er).passphrase) })
-          else setOther(errorText(t, er))
-        },
-      },
-    )
-  }
-  return (
-    <Card title={t('settings.unlock_title')}>
-      <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
-        {current ? <p className="text-caption text-ink-muted">{t('settings.unlock_current', { mode: t(`setup.mode_${current}`) })}</p> : null}
-        <fieldset className="flex flex-col gap-3">
-          <legend className="sr-only">{t('settings.unlock_title')}</legend>
-          {(['keyfile', 'passphrase'] as const).map((m) => (
-            <label key={m} className={cx('flex cursor-pointer gap-3 rounded-md border p-4', mode === m ? 'border-primary' : 'border-hairline')}>
-              <input type="radio" name="unlock_mode" checked={mode === m} onChange={() => setMode(m)} className="mt-1 accent-[var(--color-primary)]" />
-              <span className="flex flex-col gap-1">
-                <span className="font-semibold">{t(`setup.mode_${m}`)}</span>
-                <span className="text-caption text-ink-muted">{t(`setup.mode_${m}_desc`)}</span>
-              </span>
-            </label>
-          ))}
-        </fieldset>
-        <Field label={t('settings.current_password')} error={errs.cur}>
-          <SecretInput value={cur} onChange={(e) => setCur(e.target.value)} />
-        </Field>
-        {mode === 'passphrase' ? (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label={t('settings.new_passphrase')} error={errs.pp}>
-              <SecretInput value={pp} onChange={(e) => setPp(e.target.value)} />
-            </Field>
-            <Field label={t('settings.new_passphrase_again')} error={errs.again}>
-              <SecretInput value={again} onChange={(e) => setAgain(e.target.value)} />
-            </Field>
-          </div>
-        ) : null}
-        {other ? <Banner tone="danger">{other}</Banner> : null}
-        <div className="flex justify-end">
-          <Button type="submit" pending={sw.isPending}>
-            {t('settings.switch_unlock')}
-          </Button>
-        </div>
-      </form>
-    </Card>
-  )
-}
-
 function Tools() {
   const { t } = useTranslation()
   const sys = useSystem()
@@ -304,7 +216,6 @@ export function SettingsPage() {
         {settings.isError ? <Banner tone="danger">{errorText(t, settings.error)}</Banner> : null}
         {settings.data ? <NodeAndRuns s={settings.data} /> : <p className="text-caption text-ink-muted">{t('common.loading')}</p>}
         <ChangePassword />
-        {settings.data ? <UnlockModeCard key={settings.data.unlock_mode} current={settings.data.unlock_mode} /> : null}
         <Tools />
         <Language />
       </div>

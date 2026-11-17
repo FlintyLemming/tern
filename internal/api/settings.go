@@ -3,8 +3,6 @@ package api
 import (
 	"context"
 	"database/sql"
-	"errors"
-	"log/slog"
 	"math"
 	"net/http"
 	"strconv"
@@ -14,7 +12,6 @@ import (
 	"tern/internal/scheduler"
 	"tern/internal/store"
 	"tern/internal/sysinfo"
-	"tern/internal/vault"
 )
 
 func (a *API) registerSettings() {
@@ -22,7 +19,6 @@ func (a *API) registerSettings() {
 	a.Handle("GET /api/v1/settings", a.handleGetSettings, g...)
 	a.Handle("PUT /api/v1/settings", a.handlePutSettings, g...)
 	a.Handle("POST /api/v1/settings/password", a.handleChangePassword, g...)
-	a.Handle("POST /api/v1/settings/unlock-mode", a.handleUnlockMode, g...)
 	a.Handle("GET /api/v1/system", a.handleSystem, g...)
 }
 
@@ -31,7 +27,6 @@ type settingsJSON struct {
 	MaxConcurrent int    `json:"max_concurrent"`
 	LogKeepDays   int    `json:"log_keep_days"`
 	LogKeepRuns   int    `json:"log_keep_runs"`
-	UnlockMode    string `json:"unlock_mode,omitempty"` // read-only; changed through /settings/unlock-mode
 }
 
 func (a *API) metaInt(ctx context.Context, key string, def int) (int, error) {
@@ -47,7 +42,7 @@ func (a *API) metaInt(ctx context.Context, key string, def int) (int, error) {
 }
 
 func (a *API) loadSettings(ctx context.Context) (settingsJSON, error) {
-	s := settingsJSON{UnlockMode: string(a.d.Vault.Mode())}
+	var s settingsJSON
 	var err error
 	if s.NodeName, _, err = a.d.Store.GetMeta(ctx, metaNodeName); err != nil {
 		return s, err
@@ -182,54 +177,6 @@ func (a *API) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	a.clearSessionCookie(w, r)
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func (a *API) handleUnlockMode(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		CurrentPassword string `json:"current_password"`
-		Mode            string `json:"mode"`
-		Passphrase      string `json:"passphrase"`
-	}
-	if !readJSON(w, r, &req) {
-		return
-	}
-	fields := map[string]string{}
-	mode := vault.Mode(req.Mode)
-	switch mode {
-	case vault.ModeKeyfile:
-		req.Passphrase = ""
-	case vault.ModePassphrase:
-		if code := checkSecret(req.Passphrase); code != "" {
-			fields["passphrase"] = code
-		}
-	default:
-		fields["mode"] = "invalid"
-	}
-	if len(fields) > 0 {
-		writeError(w, http.StatusBadRequest, "validation", "invalid unlock mode request", fields)
-		return
-	}
-	if mode == vault.ModeKeyfile && !a.d.Mounts.Secrets {
-		writeSecretsNotMounted(w)
-		return
-	}
-	if !a.confirmPassword(w, r, req.CurrentPassword) {
-		return
-	}
-	err := a.d.Vault.SwitchMode(context.WithoutCancel(r.Context()), mode, req.Passphrase)
-	switch {
-	case err == nil:
-		w.WriteHeader(http.StatusNoContent)
-	case errors.Is(err, vault.ErrKeyfileNotRemoved):
-		// The switch stands, but the old key file still opens every
-		// credential together with an old copy of the database.
-		slog.Error("unlock mode switched, old key file not removed", "err", err)
-		writeError(w, http.StatusConflict, "keyfile_not_removed", err.Error(), nil)
-	case errors.Is(err, vault.ErrLocked):
-		a.requireUnlocked(w)
-	default:
-		internalError(w, r, err)
-	}
 }
 
 func (a *API) handleSystem(w http.ResponseWriter, r *http.Request) {

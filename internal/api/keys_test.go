@@ -36,7 +36,7 @@ func newKeyPEM(t *testing.T, pass string) string {
 func readyHarness(t *testing.T) *harness {
 	t.Helper()
 	h := newHarness(t)
-	h.setup("keyfile")
+	h.setup()
 	return h
 }
 
@@ -220,8 +220,8 @@ func TestDeleteKey(t *testing.T) {
 
 func TestKeysNeedUnlockedVault(t *testing.T) {
 	h := newHarness(t)
-	h.setup("passphrase")
-	h.restart()
+	h.setupLegacy() // locked
+	h.cookie, h.csrf = "", ""
 	wantError(t, h.do("GET", "/api/v1/ssh-keys", nil), http.StatusUnauthorized, "unauthorized")
 	h.login()
 	wantError(t, h.do("GET", "/api/v1/ssh-keys", nil), http.StatusServiceUnavailable, "vault_locked")

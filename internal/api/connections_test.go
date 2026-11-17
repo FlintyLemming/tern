@@ -308,9 +308,7 @@ func TestConnectionVersionConflict(t *testing.T) {
 
 func TestConnectionsNeedUnlockedVault(t *testing.T) {
 	h := newHarness(t)
-	h.setup("passphrase")
-	h.restart()
-	h.login()
+	h.setupLegacy() // locked
 	wantError(t, h.do("GET", "/api/v1/connections", nil), http.StatusServiceUnavailable, "vault_locked")
 	wantError(t, h.do("POST", "/api/v1/connections/probe", map[string]any{"host": "h", "port": 22}), http.StatusServiceUnavailable, "vault_locked")
 }

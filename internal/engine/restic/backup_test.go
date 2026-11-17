@@ -91,7 +91,7 @@ func newFx(t *testing.T, steps ...fakeStep) *fx {
 	if _, err := v.Load(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := v.Init(ctx, vault.ModeKeyfile, ""); err != nil {
+	if err := v.Init(ctx); err != nil {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 11, 11, 3, 0, 0, 0, time.UTC)

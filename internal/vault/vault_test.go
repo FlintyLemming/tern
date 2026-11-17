@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -13,6 +12,7 @@ import (
 	"testing"
 
 	"tern/internal/store"
+	"tern/internal/vault/vaulttest"
 )
 
 const testPass = "correct horse battery staple"
@@ -48,23 +48,33 @@ func (e *env) fresh(t *testing.T) (*Vault, State) {
 	return v, st
 }
 
-func (e *env) initVault(t *testing.T, mode Mode) *Vault {
+func (e *env) initVault(t *testing.T) *Vault {
 	t.Helper()
 	v, st := e.fresh(t)
 	if st != StateUninitialized {
 		t.Fatalf("state before Init = %q", st)
 	}
-	pass := ""
-	if mode == ModePassphrase {
-		pass = testPass
-	}
-	if err := v.Init(context.Background(), mode, pass); err != nil {
+	if err := v.Init(context.Background()); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if v.State() != StateUnlocked || v.Mode() != mode {
+	if v.State() != StateUnlocked || v.Mode() != ModeKeyfile {
 		t.Fatalf("after Init state=%q mode=%q", v.State(), v.Mode())
 	}
 	return v
+}
+
+// legacy writes the vault of a database tern 0.1 set up in passphrase mode
+// (testPass) with one credential sealed under it, which it returns.
+func (e *env) legacy(t *testing.T) (sealed string) {
+	t.Helper()
+	dek, err := vaulttest.Passphrase(context.Background(), e.st, testPass)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sealed, err = vaulttest.Seal(dek, "x/1/f", []byte("kept")); err != nil {
+		t.Fatal(err)
+	}
+	return sealed
 }
 
 func (e *env) meta(t *testing.T, key string) (string, bool) {
@@ -86,7 +96,7 @@ func mustSeal(t *testing.T, v *Vault, aad string, p []byte) string {
 }
 
 func TestSealOpenRoundTrip(t *testing.T) {
-	v := newEnv(t).initVault(t, ModeKeyfile)
+	v := newEnv(t).initVault(t)
 	p := []byte("-----BEGIN OPENSSH PRIVATE KEY-----")
 	s := mustSeal(t, v, "ssh_keys/a/private", p)
 	if !strings.HasPrefix(s, "v1.") {
@@ -99,7 +109,7 @@ func TestSealOpenRoundTrip(t *testing.T) {
 }
 
 func TestSealIsRandomized(t *testing.T) {
-	v := newEnv(t).initVault(t, ModeKeyfile)
+	v := newEnv(t).initVault(t)
 	a := mustSeal(t, v, "x/1/f", []byte("same"))
 	b := mustSeal(t, v, "x/1/f", []byte("same"))
 	if a == b {
@@ -108,7 +118,7 @@ func TestSealIsRandomized(t *testing.T) {
 }
 
 func TestOpenRejectsOtherAAD(t *testing.T) {
-	v := newEnv(t).initVault(t, ModeKeyfile)
+	v := newEnv(t).initVault(t)
 	s := mustSeal(t, v, "ssh_keys/a/private", []byte("p"))
 	if _, err := v.Open("ssh_keys/b/private", s); err == nil {
 		t.Fatal("Open accepted a ciphertext bound to another record")
@@ -116,7 +126,7 @@ func TestOpenRejectsOtherAAD(t *testing.T) {
 }
 
 func TestOpenRejectsTampering(t *testing.T) {
-	v := newEnv(t).initVault(t, ModeKeyfile)
+	v := newEnv(t).initVault(t)
 	s := mustSeal(t, v, "x/1/f", []byte("payload"))
 	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(s, "v1."))
 	if err != nil {
@@ -138,7 +148,7 @@ func TestOpenRejectsTampering(t *testing.T) {
 
 func TestSealWhenLocked(t *testing.T) {
 	e := newEnv(t)
-	e.initVault(t, ModePassphrase)
+	e.legacy(t)
 	v, _ := e.fresh(t)
 	if _, err := v.Seal("x/1/f", []byte("p")); !errors.Is(err, ErrLocked) {
 		t.Errorf("Seal err = %v, want ErrLocked", err)
@@ -150,19 +160,25 @@ func TestSealWhenLocked(t *testing.T) {
 
 func TestInitTwice(t *testing.T) {
 	e := newEnv(t)
-	v := e.initVault(t, ModeKeyfile)
-	if err := v.Init(context.Background(), ModeKeyfile, ""); !errors.Is(err, ErrAlreadyInitialized) {
+	v := e.initVault(t)
+	if err := v.Init(context.Background()); !errors.Is(err, ErrAlreadyInitialized) {
 		t.Errorf("second Init err = %v, want ErrAlreadyInitialized", err)
 	}
 	// A different instance that never called Load must not re-initialize either.
-	if err := New(e.st, e.secrets).Init(context.Background(), ModePassphrase, testPass); !errors.Is(err, ErrAlreadyInitialized) {
+	if err := New(e.st, e.secrets).Init(context.Background()); !errors.Is(err, ErrAlreadyInitialized) {
 		t.Errorf("Init on a fresh instance err = %v, want ErrAlreadyInitialized", err)
+	}
+	// Nor may Init take over the vault of an old passphrase-mode database.
+	e2 := newEnv(t)
+	e2.legacy(t)
+	if err := New(e2.st, e2.secrets).Init(context.Background()); !errors.Is(err, ErrAlreadyInitialized) {
+		t.Errorf("Init over a passphrase-mode vault err = %v, want ErrAlreadyInitialized", err)
 	}
 }
 
 func TestKeyfileInitCreatesFile(t *testing.T) {
 	e := newEnv(t)
-	e.initVault(t, ModeKeyfile)
+	e.initVault(t)
 	fi, err := os.Stat(e.keyPath())
 	if err != nil {
 		t.Fatal(err)
@@ -174,7 +190,7 @@ func TestKeyfileInitCreatesFile(t *testing.T) {
 
 func TestKeyfileAutoUnlock(t *testing.T) {
 	e := newEnv(t)
-	s := mustSeal(t, e.initVault(t, ModeKeyfile), "x/1/f", []byte("kept"))
+	s := mustSeal(t, e.initVault(t), "x/1/f", []byte("kept"))
 	v, st := e.fresh(t)
 	if st != StateUnlocked {
 		t.Fatalf("state = %q, want unlocked", st)
@@ -186,7 +202,7 @@ func TestKeyfileAutoUnlock(t *testing.T) {
 
 func TestKeyfileMissing(t *testing.T) {
 	e := newEnv(t)
-	e.initVault(t, ModeKeyfile)
+	e.initVault(t)
 	if err := os.Remove(e.keyPath()); err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +220,7 @@ func TestKeyfileMissing(t *testing.T) {
 
 func TestKeyfileMismatch(t *testing.T) {
 	e := newEnv(t)
-	e.initVault(t, ModeKeyfile)
+	e.initVault(t)
 	other := make([]byte, 32)
 	rand.Read(other)
 	if err := os.WriteFile(e.keyPath(), other, 0o600); err != nil {
@@ -221,7 +237,7 @@ func TestKeyfileMismatch(t *testing.T) {
 func TestKeyfileWrongShape(t *testing.T) {
 	t.Run("31 bytes", func(t *testing.T) {
 		e := newEnv(t)
-		e.initVault(t, ModeKeyfile)
+		e.initVault(t)
 		short := bytes.Repeat([]byte{7}, 31)
 		os.WriteFile(e.keyPath(), short, 0o600)
 		if _, st := e.fresh(t); st != StateKeyfileMismatch {
@@ -233,7 +249,7 @@ func TestKeyfileWrongShape(t *testing.T) {
 	})
 	t.Run("directory", func(t *testing.T) {
 		e := newEnv(t)
-		e.initVault(t, ModeKeyfile)
+		e.initVault(t)
 		os.Remove(e.keyPath())
 		os.Mkdir(e.keyPath(), 0o700)
 		if _, st := e.fresh(t); st != StateKeyfileMismatch {
@@ -248,7 +264,7 @@ func TestKeyfileWrongShape(t *testing.T) {
 			t.Skip("root can read anything")
 		}
 		e := newEnv(t)
-		e.initVault(t, ModeKeyfile)
+		e.initVault(t)
 		os.Chmod(e.keyPath(), 0)
 		if _, st := e.fresh(t); st != StateKeyfileMismatch {
 			t.Fatalf("state = %q, want keyfile_mismatch", st)
@@ -264,7 +280,7 @@ func TestKeyfileInitReusesExisting(t *testing.T) {
 	pre := make([]byte, 32)
 	rand.Read(pre)
 	os.WriteFile(e.keyPath(), pre, 0o600)
-	v := e.initVault(t, ModeKeyfile)
+	v := e.initVault(t)
 	if got, _ := os.ReadFile(e.keyPath()); !bytes.Equal(got, pre) {
 		t.Fatal("Init overwrote an existing key file")
 	}
@@ -283,7 +299,7 @@ func TestKeyfileInitRefusesWrongShape(t *testing.T) {
 	short := bytes.Repeat([]byte{7}, 31)
 	os.WriteFile(e.keyPath(), short, 0o600)
 	v, _ := e.fresh(t)
-	if err := v.Init(context.Background(), ModeKeyfile, ""); err == nil {
+	if err := v.Init(context.Background()); err == nil {
 		t.Fatal("Init accepted a 31-byte key file")
 	}
 	if got, _ := os.ReadFile(e.keyPath()); !bytes.Equal(got, short) {
@@ -299,20 +315,20 @@ func TestKeyfileInitRefusesWrongShape(t *testing.T) {
 
 func TestPassphraseLockedAfterLoad(t *testing.T) {
 	e := newEnv(t)
-	e.initVault(t, ModePassphrase)
+	e.legacy(t)
 	v, st := e.fresh(t)
 	if st != StateLocked || v.Mode() != ModePassphrase {
 		t.Fatalf("state=%q mode=%q, want locked/passphrase", st, v.Mode())
 	}
 	if entries, _ := os.ReadDir(e.secrets); len(entries) != 0 {
-		t.Error("passphrase mode created a file in the secrets dir")
+		t.Error("loading a passphrase-mode vault created a file in the secrets dir")
 	}
 }
 
 func TestPassphraseUnlock(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t)
-	s := mustSeal(t, e.initVault(t, ModePassphrase), "x/1/f", []byte("kept"))
+	s := e.legacy(t)
 	v, _ := e.fresh(t)
 	if err := v.Unlock(ctx, "wrong passphrase!"); !errors.Is(err, ErrWrongPassphrase) {
 		t.Fatalf("Unlock(wrong) err = %v, want ErrWrongPassphrase", err)
@@ -326,117 +342,100 @@ func TestPassphraseUnlock(t *testing.T) {
 	if err := v.Unlock(ctx, testPass); err != nil {
 		t.Fatalf("Unlock: %v", err)
 	}
-	if v.State() != StateUnlocked {
-		t.Fatalf("state = %q, want unlocked", v.State())
+	if v.State() != StateUnlocked || v.Mode() != ModePassphrase {
+		t.Fatalf("state=%q mode=%q, want unlocked/passphrase", v.State(), v.Mode())
 	}
 	if got, err := v.Open("x/1/f", s); err != nil || string(got) != "kept" {
 		t.Fatalf("Open = (%q, %v)", got, err)
 	}
+	if entries, _ := os.ReadDir(e.secrets); len(entries) != 0 {
+		t.Error("Unlock alone created a file in the secrets dir")
+	}
 }
 
-func TestKDFParamsStored(t *testing.T) {
+func TestInitWritesNoKDF(t *testing.T) {
 	e := newEnv(t)
-	e.initVault(t, ModePassphrase)
-	raw, ok := e.meta(t, "vault.kdf")
-	if !ok {
-		t.Fatal("vault.kdf missing")
+	e.initVault(t)
+	if mode, _ := e.meta(t, "vault.mode"); mode != "keyfile" {
+		t.Errorf("vault.mode = %q", mode)
 	}
-	var k struct {
-		Salt      string `json:"salt"`
-		Time      int    `json:"time"`
-		MemoryKiB int    `json:"memory_kib"`
-		Threads   int    `json:"threads"`
-	}
-	if err := json.Unmarshal([]byte(raw), &k); err != nil {
-		t.Fatal(err)
-	}
-	if k.Time != 3 || k.MemoryKiB != 65536 || k.Threads != 4 {
-		t.Errorf("kdf params = %+v", k)
-	}
-	salt, err := base64.StdEncoding.DecodeString(k.Salt)
-	if err != nil || len(salt) != 16 {
-		t.Errorf("salt decodes to %d bytes (%v), want 16", len(salt), err)
+	if _, ok := e.meta(t, "vault.kdf"); ok {
+		t.Error("Init wrote vault.kdf")
 	}
 }
 
-func TestSwitchKeyfileToPassphrase(t *testing.T) {
+func TestConvertToKeyfile(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t)
-	v := e.initVault(t, ModeKeyfile)
-	s := mustSeal(t, v, "x/1/f", []byte("kept"))
-	before, _ := e.meta(t, "vault.dek")
-	if err := v.SwitchMode(ctx, ModePassphrase, testPass); err != nil {
-		t.Fatalf("SwitchMode: %v", err)
+	s := e.legacy(t)
+	v, _ := e.fresh(t)
+	if err := v.ConvertToKeyfile(ctx); !errors.Is(err, ErrLocked) {
+		t.Fatalf("ConvertToKeyfile while locked err = %v, want ErrLocked", err)
 	}
-	if got, err := v.Open("x/1/f", s); err != nil || string(got) != "kept" {
-		t.Fatalf("Open after switch = (%q, %v)", got, err)
+	if err := v.Unlock(ctx, testPass); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := e.meta(t, "vault.dek")
+	if err := v.ConvertToKeyfile(ctx); err != nil {
+		t.Fatalf("ConvertToKeyfile: %v", err)
+	}
+	if v.State() != StateUnlocked || v.Mode() != ModeKeyfile {
+		t.Fatalf("state=%q mode=%q, want unlocked/keyfile", v.State(), v.Mode())
 	}
 	if after, _ := e.meta(t, "vault.dek"); after == before {
 		t.Error("vault.dek did not change")
 	}
-	if _, err := os.Stat(e.keyPath()); !os.IsNotExist(err) {
-		t.Errorf("master.key still exists after switching to passphrase mode (stat err = %v)", err)
-	}
-	v2, st := e.fresh(t)
-	if st != StateLocked {
-		t.Fatalf("fresh state = %q, want locked", st)
-	}
-	if err := v2.Unlock(ctx, testPass); err != nil {
-		t.Fatalf("Unlock: %v", err)
-	}
-	if got, err := v2.Open("x/1/f", s); err != nil || string(got) != "kept" {
-		t.Fatalf("Open after unlock = (%q, %v)", got, err)
-	}
-}
-
-func TestSwitchPassphraseToKeyfile(t *testing.T) {
-	ctx := context.Background()
-	e := newEnv(t)
-	v := e.initVault(t, ModePassphrase)
-	s := mustSeal(t, v, "x/1/f", []byte("kept"))
-	if err := v.SwitchMode(ctx, ModeKeyfile, ""); err != nil {
-		t.Fatalf("SwitchMode: %v", err)
-	}
 	if _, ok := e.meta(t, "vault.kdf"); ok {
 		t.Error("vault.kdf still present in keyfile mode")
 	}
+	if fi, err := os.Stat(e.keyPath()); err != nil || fi.Size() != 32 || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("master.key after conversion: %v %v", fi, err)
+	}
+	// After a restart the vault opens by itself, with the same data key.
 	v2, st := e.fresh(t)
-	if st != StateUnlocked {
-		t.Fatalf("fresh state = %q, want unlocked", st)
+	if st != StateUnlocked || v2.Mode() != ModeKeyfile {
+		t.Fatalf("fresh state=%q mode=%q, want unlocked/keyfile", st, v2.Mode())
 	}
 	if got, err := v2.Open("x/1/f", s); err != nil || string(got) != "kept" {
 		t.Fatalf("Open = (%q, %v)", got, err)
 	}
-	// A locked vault cannot be switched: the data key is not in memory.
-	e2 := newEnv(t)
-	e2.initVault(t, ModePassphrase)
-	locked, _ := e2.fresh(t)
-	if err := locked.SwitchMode(ctx, ModeKeyfile, ""); !errors.Is(err, ErrLocked) {
-		t.Errorf("SwitchMode on locked vault err = %v, want ErrLocked", err)
+	// The passphrase is no longer of any use.
+	if err := v2.Unlock(ctx, testPass); err != nil {
+		t.Errorf("Unlock on an unlocked vault err = %v, want nil", err)
+	}
+	// Converting again changes nothing.
+	dek, _ := e.meta(t, "vault.dek")
+	if err := v2.ConvertToKeyfile(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := e.meta(t, "vault.dek"); again != dek {
+		t.Error("ConvertToKeyfile in keyfile mode rewrote vault.dek")
 	}
 }
 
-// The switch itself is committed even when the old key file cannot be removed
-// (read-only /secrets); the caller is told so it can warn the user.
-func TestSwitchReportsKeyfileItCannotRemove(t *testing.T) {
+// A conversion that cannot create the key file (read-only /secrets) leaves
+// the vault as it was: open now, and in passphrase mode after a restart.
+func TestConvertToKeyfileFails(t *testing.T) {
 	if os.Getuid() == 0 {
 		t.Skip("root ignores directory permissions")
 	}
 	ctx := context.Background()
 	e := newEnv(t)
-	v := e.initVault(t, ModeKeyfile)
-	s := mustSeal(t, v, "x/1/f", []byte("kept"))
+	s := e.legacy(t)
+	v, _ := e.fresh(t)
+	if err := v.Unlock(ctx, testPass); err != nil {
+		t.Fatal(err)
+	}
 	os.Chmod(e.secrets, 0o500)
 	defer os.Chmod(e.secrets, 0o700)
-	err := v.SwitchMode(ctx, ModePassphrase, testPass)
-	if !errors.Is(err, ErrKeyfileNotRemoved) {
-		t.Fatalf("SwitchMode err = %v, want ErrKeyfileNotRemoved", err)
+	if err := v.ConvertToKeyfile(ctx); err == nil {
+		t.Fatal("ConvertToKeyfile succeeded without a writable secrets dir")
 	}
-	if !strings.Contains(err.Error(), e.keyPath()) {
-		t.Errorf("error %q does not name the key file", err)
+	if v.State() != StateUnlocked || v.Mode() != ModePassphrase {
+		t.Fatalf("state=%q mode=%q, want unlocked/passphrase", v.State(), v.Mode())
 	}
-	if v.Mode() != ModePassphrase || v.State() != StateUnlocked {
-		t.Fatalf("mode=%q state=%q, want passphrase/unlocked", v.Mode(), v.State())
+	if got, err := v.Open("x/1/f", s); err != nil || string(got) != "kept" {
+		t.Fatalf("Open = (%q, %v)", got, err)
 	}
 	v2, st := e.fresh(t)
 	if st != StateLocked {
@@ -444,8 +443,5 @@ func TestSwitchReportsKeyfileItCannotRemove(t *testing.T) {
 	}
 	if err := v2.Unlock(ctx, testPass); err != nil {
 		t.Fatal(err)
-	}
-	if got, err := v2.Open("x/1/f", s); err != nil || string(got) != "kept" {
-		t.Fatalf("Open = (%q, %v)", got, err)
 	}
 }

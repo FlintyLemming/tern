@@ -2,7 +2,12 @@
 //
 // Every credential is sealed with a random 256-bit data key (XChaCha20-Poly1305).
 // The data key itself is stored in the database, wrapped by a master key that
-// comes either from a key file or from a passphrase run through Argon2id.
+// tern generates into a key file in the secrets directory, so the database
+// alone (or any copy of it) opens nothing.
+//
+// tern 0.1 could instead wrap the data key with a key derived from a
+// passphrase. Such a vault loads locked; Unlock opens it and
+// ConvertToKeyfile moves it to a key file for good.
 package vault
 
 import (
@@ -12,8 +17,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -26,7 +29,8 @@ import (
 type Mode string
 
 const (
-	ModeKeyfile    Mode = "keyfile"
+	ModeKeyfile Mode = "keyfile"
+	// ModePassphrase is only ever loaded, from a database of tern 0.1.
 	ModePassphrase Mode = "passphrase"
 )
 
@@ -44,9 +48,6 @@ var (
 	ErrLocked             = errors.New("vault: locked")
 	ErrWrongPassphrase    = errors.New("vault: wrong passphrase")
 	ErrAlreadyInitialized = errors.New("vault: already initialized")
-	// ErrKeyfileNotRemoved is returned by SwitchMode when the switch to
-	// passphrase mode succeeded but the old key file is still on disk.
-	ErrKeyfileNotRemoved = errors.New("vault: switched to passphrase mode, but the old key file could not be removed")
 )
 
 const (
@@ -135,8 +136,9 @@ func (v *Vault) Load(ctx context.Context) (State, error) {
 	return v.state, nil
 }
 
-// Init generates the data key and wraps it for mode. It succeeds once per database.
-func (v *Vault) Init(ctx context.Context, mode Mode, passphrase string) error {
+// Init generates the data key and wraps it with the key file, which it
+// creates when there is none. It succeeds once per database.
+func (v *Vault) Init(ctx context.Context) error {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
@@ -147,53 +149,37 @@ func (v *Vault) Init(ctx context.Context, mode Mode, passphrase string) error {
 	}
 	dek := make([]byte, keyLen)
 	rand.Read(dek)
-	if err := v.wrapAndStore(ctx, mode, passphrase, dek); err != nil {
+	if err := v.storeWithKeyfile(ctx, dek); err != nil {
 		return err
 	}
-	v.set(StateUnlocked, mode, dek)
+	v.set(StateUnlocked, ModeKeyfile, dek)
 	return nil
 }
 
-// SwitchMode re-wraps the data key for another mode (or a new passphrase).
-// Sealed credentials are untouched. Leaving key-file mode deletes the key
-// file; if that fails the switch still stands and ErrKeyfileNotRemoved is
-// returned.
-func (v *Vault) SwitchMode(ctx context.Context, mode Mode, passphrase string) error {
+// ConvertToKeyfile re-wraps the data key of an unlocked passphrase-mode
+// vault with the key file, so that from now on it unlocks by itself. Sealed
+// credentials are untouched. It is a no-op in key-file mode.
+func (v *Vault) ConvertToKeyfile(ctx context.Context) error {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
 	if v.state != StateUnlocked {
 		return ErrLocked
 	}
-	if err := v.wrapAndStore(ctx, mode, passphrase, v.dek); err != nil {
+	if v.mode == ModeKeyfile {
+		return nil
+	}
+	if err := v.storeWithKeyfile(ctx, v.dek); err != nil {
 		return err
 	}
-	prev := v.mode
-	v.mode = mode
-	if prev == ModeKeyfile && mode == ModePassphrase {
-		// The data key does not rotate, so the old key file together with any
-		// old copy of the database would still open every credential.
-		if err := os.Remove(v.keyPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return fmt.Errorf("%w: delete %s by hand: %v", ErrKeyfileNotRemoved, v.keyPath, err)
-		}
-	}
+	v.mode = ModeKeyfile
 	return nil
 }
 
-// wrapAndStore obtains the master key for mode, wraps dek with it and writes
-// vault.mode, vault.dek and vault.kdf in one transaction.
-func (v *Vault) wrapAndStore(ctx context.Context, mode Mode, passphrase string, dek []byte) error {
-	var master []byte
-	var kdfJSON string
-	var err error
-	switch mode {
-	case ModeKeyfile:
-		master, err = ensureKeyfile(v.keyPath)
-	case ModePassphrase:
-		master, kdfJSON, err = newPassphraseKey(passphrase)
-	default:
-		err = fmt.Errorf("vault: unknown mode %q", mode)
-	}
+// storeWithKeyfile wraps dek with the key file's master key and writes
+// vault.mode, vault.dek and (the removal of) vault.kdf in one transaction.
+func (v *Vault) storeWithKeyfile(ctx context.Context, dek []byte) error {
+	master, err := ensureKeyfile(v.keyPath)
 	if err != nil {
 		return err
 	}
@@ -202,16 +188,13 @@ func (v *Vault) wrapAndStore(ctx context.Context, mode Mode, passphrase string, 
 		return err
 	}
 	return v.st.Tx(ctx, func(tx *sql.Tx) error {
-		if err := store.SetMetaTx(ctx, tx, metaMode, string(mode)); err != nil {
+		if err := store.SetMetaTx(ctx, tx, metaMode, string(ModeKeyfile)); err != nil {
 			return err
 		}
 		if err := store.SetMetaTx(ctx, tx, metaDEK, wrapped); err != nil {
 			return err
 		}
-		if kdfJSON == "" {
-			return store.DeleteMetaTx(ctx, tx, metaKDF)
-		}
-		return store.SetMetaTx(ctx, tx, metaKDF, kdfJSON)
+		return store.DeleteMetaTx(ctx, tx, metaKDF)
 	})
 }
 

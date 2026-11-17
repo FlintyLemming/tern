@@ -1,7 +1,7 @@
 {
   "error": {
     "data_not_mounted": "数据目录不在 NAS 的数据卷上。重新安装 tern 到一个数据卷上",
-    "secrets_not_mounted": "secrets 目录不在 NAS 的数据卷上。重新安装 tern 到一个数据卷上，或者改用口令解锁"
+    "secrets_not_mounted": "secrets 目录不在 NAS 的数据卷上。重新安装 tern 到一个数据卷上"
   },
   "field": {
     "not_absolute": "要填 NAS 上的绝对路径，例如 /share/Photos",
@@ -13,10 +13,9 @@
     "note": "这个页面上没有可以操作的东西：问题只能在 NAS 上解决。"
   },
   "setup": {
-    "password_hint": "至少 10 个字符。平时通过 QTS 登录；查看恢复信息、修改解锁方式时要输入它，QTS 登录检查不可用时也可以用它登录。",
-    "mode_keyfile_desc": "重启后自动解锁，计划任务照常运行。密钥文件在 tern 安装目录的 secrets 里，要另外保存一份到这台 NAS 以外。",
+    "password_hint": "至少 10 个字符。平时通过 QTS 登录；查看恢复信息、修改密码时要输入它，QTS 登录检查不可用时也可以用它登录。",
     "no_data": "数据目录不在 NAS 的数据卷上，所有设置会在 NAS 重启时丢失。把 tern 重新安装到一个数据卷上。",
-    "no_secrets": "secrets 目录不在 NAS 的数据卷上。把 tern 重新安装到一个数据卷上，或者改用口令解锁。"
+    "no_secrets": "secrets 目录不在 NAS 的数据卷上，NAS 重启后保存的凭据就打不开了。把 tern 重新安装到一个数据卷上。"
   },
   "task": {
     "hook_local": "本机（NAS）",

@@ -93,7 +93,7 @@ func TestRunThroughRealWiring(t *testing.T) {
 	a := start(t, testCfg(t))
 	jar, _ := cookiejar.New(nil)
 	c := &client{t: t, base: "http://" + a.Addr(), c: &http.Client{Jar: jar}}
-	c.csrf = c.call("POST", "/api/v1/setup", map[string]any{"password": "correct horse battery", "node_name": "nas-1", "unlock_mode": "keyfile"}, 201)["csrf_token"].(string)
+	c.csrf = c.call("POST", "/api/v1/setup", map[string]any{"password": "correct horse battery", "node_name": "nas-1"}, 201)["csrf_token"].(string)
 
 	conn := c.call("POST", "/api/v1/connections", map[string]any{"type": "webdav", "name": "dav", "url": dav.URL + "/dav", "username": "me"}, 201)
 	task := c.call("POST", "/api/v1/tasks", map[string]any{"type": "sync", "name": "photos", "enabled": true, "sync": map[string]any{
