@@ -168,7 +168,8 @@ func (p *planner) RemoteState(ctx context.Context, env engine.Env, fp model.Fold
 
 func (p *planner) Plan(ctx context.Context, env engine.Env, fp model.FolderPair) (synccore.Plan, error) {
 	args := Args(p.spec, fp, p.conf, p.filter, true, -1)
-	parser := NewParser(nil)
+	// A dry run's stats count the files it would transfer as transferred.
+	parser := NewParser(env.Progress)
 	res, err := p.exec(ctx, env, args, nil, parser.Line)
 	if err != nil {
 		return synccore.Plan{}, err

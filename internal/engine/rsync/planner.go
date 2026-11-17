@@ -188,8 +188,8 @@ func (p *planner) RemoteState(ctx context.Context, env engine.Env, fp model.Fold
 }
 
 func (p *planner) Plan(ctx context.Context, env engine.Env, fp model.FolderPair) (synccore.Plan, error) {
-	parser := NewParser(nil)
-	parser.quiet = true
+	parser := NewParser(env.Progress)
+	parser.quiet, parser.planning = true, true
 	res, err := p.exec(ctx, env, Args(p.spec, fp, p.sshConfig, p.excludes, true, -1), parser.Line, nil)
 	if err != nil {
 		return synccore.Plan{}, err

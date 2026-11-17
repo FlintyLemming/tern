@@ -181,13 +181,19 @@ export interface UnitResult {
   error: string
 }
 
+// phase is '' for engines that report only their transfer (restic). In
+// the plan phase files_done/bytes_done count what was found to transfer.
+export type Phase = '' | 'connect' | 'check' | 'plan' | 'transfer'
+
 export interface Progress {
   unit: string
+  phase: Phase
   bytes_done: number
   bytes_total: number
   total_estimated?: boolean
   files_done: number
   files_total: number
+  scanned: number
   speed_bps: number
   eta_sec: number
 }

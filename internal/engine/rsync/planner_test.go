@@ -128,6 +128,8 @@ func TestRemoteState(t *testing.T) {
 
 func TestPlanDryRun(t *testing.T) {
 	f := newPlanner(t, spec("push", "mirror"), faketool.Step{Stdout: fixture(t, "dryrun.txt")})
+	var progress []model.Progress
+	f.env.Progress = func(p model.Progress) { progress = append(progress, p) }
 	f.prepare()
 	plan, err := f.pl.Plan(context.Background(), f.env, pairA)
 	if err != nil {
@@ -135,6 +137,10 @@ func TestPlanDryRun(t *testing.T) {
 	}
 	if plan.TransferCount != 1 || plan.DeleteCount != 2 || plan.Bytes != 7 {
 		t.Errorf("plan = %+v", plan)
+	}
+	// Each file found to transfer is counted as it is found.
+	if len(progress) != 1 || progress[0].FilesDone != 1 {
+		t.Errorf("progress = %+v", progress)
 	}
 	c := f.tool.Calls()[0]
 	if !slices.Contains(c.Args, "--dry-run") || !slices.Contains(c.Args, "--delete") {

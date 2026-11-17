@@ -28,6 +28,9 @@ type Parser struct {
 	// quiet leaves itemized entries out of the log: during a dry run
 	// synccore logs the (capped) plan instead.
 	quiet bool
+	// planning reports each file found to transfer as progress: a dry
+	// run prints no progress lines of its own.
+	planning bool
 
 	plan       synccore.Plan
 	dirDeletes int
@@ -118,6 +121,9 @@ func (p *Parser) entry(line string) bool {
 		return true
 	case strings.HasPrefix(line, "<f") || strings.HasPrefix(line, ">f"):
 		p.plan.AddTransfer(decodeName(name), 0)
+		if p.planning && p.onProgress != nil {
+			p.onProgress(model.Progress{FilesDone: int64(p.plan.TransferCount)})
+		}
 		return true
 	case line[nameAt-1] == ' ' && strings.IndexByte("<>ch.", line[0]) >= 0:
 		return true // directories, links, attribute-only changes

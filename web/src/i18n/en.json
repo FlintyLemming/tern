@@ -364,9 +364,6 @@
     "col_last_success": "Last success",
     "col_next": "Next run",
     "empty": "No tasks yet. Add a connection under Connections & keys, then create a task under Tasks.",
-    "progress": "{{done}} of {{total}} · {{speed}} · {{eta}} left",
-    "progress_scanning": "{{done}} transferred (scanning, {{total}}+ queued) · {{speed}}",
-    "progress_unknown": "{{done}} transferred · {{speed}}",
     "waiting_retry": "Waiting to retry",
     "queued": "Queued",
     "starting": "Starting…"
@@ -514,5 +511,16 @@
     "bad_path": "The path must start with /",
     "choose": "Choose this folder",
     "need_conn": "Choose a connection first"
+  },
+  "progress": {
+    "connect": "Checking the connection…",
+    "check": "Checking the source and destination folders…",
+    "plan": "Dry run: comparing source and destination; nothing transferred yet",
+    "plan_scanned": "{{n}} entries scanned",
+    "plan_found": "{{n}} files to transfer",
+    "plan_found_bytes": "{{n}} files to transfer, {{bytes}}",
+    "transfer": "{{done}} of {{total}} · {{speed}} · {{eta}} left",
+    "transfer_scanning": "{{done}} transferred (scanning, {{total}}+ queued) · {{speed}}",
+    "transfer_unknown": "{{done}} transferred · {{speed}}"
   }
 }

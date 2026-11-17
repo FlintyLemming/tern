@@ -123,6 +123,8 @@ func TestRemoteState(t *testing.T) {
 
 func TestPlanUsesDryRun(t *testing.T) {
 	f := newPlanner(t, spec("push", "mirror"), faketool.Step{Stderr: fixture(t, "dryrun.jsonl")})
+	var progress []model.Progress
+	f.env.Progress = func(p model.Progress) { progress = append(progress, p) }
 	f.prepare()
 	plan, err := f.pl.Plan(context.Background(), f.env, pairA)
 	if err != nil {
@@ -130,6 +132,13 @@ func TestPlanUsesDryRun(t *testing.T) {
 	}
 	if plan.TransferCount != 1 || plan.DeleteCount != 2 {
 		t.Errorf("plan = %+v", plan)
+	}
+	// A long dry run is not silent: its stats count what it found so far.
+	if len(progress) == 0 {
+		t.Fatal("no progress from the dry run")
+	}
+	if last := progress[len(progress)-1]; last.FilesDone != 1 || last.BytesDone != 7 || last.Scanned != 7 {
+		t.Errorf("last progress = %+v", last)
 	}
 	calls := f.tool.Calls()
 	if len(calls) != 1 || calls[0].Args[0] != "sync" || !slices.Contains(calls[0].Args, "--dry-run") || slices.Contains(calls[0].Args, "--max-delete") {

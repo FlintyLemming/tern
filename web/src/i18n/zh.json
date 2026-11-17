@@ -364,9 +364,6 @@
     "col_last_success": "上次成功",
     "col_next": "下次运行",
     "empty": "还没有任务。先在“连接与密钥”里添加连接，再到“任务”里新建。",
-    "progress": "已传 {{done}} / {{total}} · {{speed}} · 预计剩余 {{eta}}",
-    "progress_scanning": "已传 {{done}}（扫描中，已发现待传 {{total}}+）· {{speed}}",
-    "progress_unknown": "已传 {{done}} · {{speed}}",
     "waiting_retry": "等待重试",
     "queued": "排队中",
     "starting": "正在开始…"
@@ -514,5 +511,16 @@
     "bad_path": "路径要以 / 开头",
     "choose": "选择此文件夹",
     "need_conn": "先选择连接"
+  },
+  "progress": {
+    "connect": "正在检查连接…",
+    "check": "正在检查源和目标文件夹…",
+    "plan": "正在试运行：比对源和目标，还没开始传输",
+    "plan_scanned": "已扫描 {{n}} 项",
+    "plan_found": "发现 {{n}} 个文件要传",
+    "plan_found_bytes": "发现 {{n}} 个文件要传，共 {{bytes}}",
+    "transfer": "已传 {{done}} / {{total}} · {{speed}} · 预计剩余 {{eta}}",
+    "transfer_scanning": "已传 {{done}}（扫描中，已发现待传 {{total}}+）· {{speed}}",
+    "transfer_unknown": "已传 {{done}} · {{speed}}"
   }
 }

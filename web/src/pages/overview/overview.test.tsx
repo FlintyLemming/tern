@@ -2,7 +2,7 @@ import { act, screen, waitFor, within } from '@testing-library/react'
 import { Route } from 'react-router'
 import { afterEach } from 'vitest'
 import { connectEvents } from '../../api/events'
-import type { Overview, OverviewItem, SystemInfo } from '../../api/types'
+import type { Overview, OverviewItem, Progress, SystemInfo } from '../../api/types'
 import { fakeFetch } from '../../test/fetch'
 import { FakeES } from '../../test/eventsource'
 import { overview as baseOverview, system } from '../../test/data'
@@ -69,9 +69,14 @@ it('last success is relative with the node-zone time on hover', async () => {
 
 const running = (progress: OverviewItem['active_run']) => ({ tasks: [item({ name: 'docs', active_run: progress })] })
 
+// transferring is a progress report as restic sends it: no phase.
+const transferring = (p: Partial<Progress>): Progress => ({
+  unit: '/data', phase: '', bytes_done: 0, bytes_total: 0, files_done: 0, files_total: 0, scanned: 0, speed_bps: 0, eta_sec: 0, ...p,
+})
+
 it('progress row for active run', async () => {
   renderOverview(
-    running({ run_id: 'r7', status: 'running', progress: { unit: '/data', bytes_done: 1048576, bytes_total: 4194304, files_done: 1, files_total: 4, speed_bps: 2097152, eta_sec: 90 } }),
+    running({ run_id: 'r7', status: 'running', progress: transferring({ bytes_done: 1048576, bytes_total: 4194304, files_done: 1, files_total: 4, speed_bps: 2097152, eta_sec: 90 }) }),
   )
   expect(await screen.findByText('已传 1 MiB / 4 MiB · 2 MiB/s · 预计剩余 1:30')).toBeInTheDocument()
   expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '1048576')
@@ -79,7 +84,7 @@ it('progress row for active run', async () => {
 
 it('progress updates from run.progress event', async () => {
   const { f, qc } = renderOverview(
-    running({ run_id: 'r7', status: 'running', progress: { unit: '/data', bytes_done: 1048576, bytes_total: 4194304, files_done: 1, files_total: 4, speed_bps: 2097152, eta_sec: 90 } }),
+    running({ run_id: 'r7', status: 'running', progress: transferring({ bytes_done: 1048576, bytes_total: 4194304, files_done: 1, files_total: 4, speed_bps: 2097152, eta_sec: 90 }) }),
   )
   await screen.findByText(/已传 1 MiB/)
   FakeES.all = []
@@ -88,7 +93,7 @@ it('progress updates from run.progress event', async () => {
   act(() =>
     FakeES.all[0].emit('run.progress', {
       run_id: 'r7',
-      progress: { unit: '/data', bytes_done: 3145728, bytes_total: 4194304, files_done: 3, files_total: 4, speed_bps: 1048576, eta_sec: 1 },
+      progress: transferring({ bytes_done: 3145728, bytes_total: 4194304, files_done: 3, files_total: 4, speed_bps: 1048576, eta_sec: 1 }),
     }),
   )
   expect(await screen.findByText('已传 3 MiB / 4 MiB · 1 MiB/s · 预计剩余 0:01')).toBeInTheDocument()
@@ -101,10 +106,26 @@ it('progress row for estimated total', async () => {
     running({
       run_id: 'r7',
       status: 'running',
-      progress: { unit: '/data', bytes_done: 1048576, bytes_total: 4194304, total_estimated: true, files_done: 1, files_total: 4, speed_bps: 2097152, eta_sec: 1 },
+      progress: transferring({ bytes_done: 1048576, bytes_total: 4194304, total_estimated: true, files_done: 1, files_total: 4, speed_bps: 2097152, eta_sec: 1 }),
     }),
   )
   expect(await screen.findByText('已传 1 MiB（扫描中，已发现待传 4 MiB+）· 2 MiB/s')).toBeInTheDocument()
+  expect(screen.getByRole('progressbar')).not.toHaveAttribute('aria-valuenow')
+})
+
+it('connect and check phases say what is happening', async () => {
+  renderOverview(running({ run_id: 'r7', status: 'running', progress: transferring({ phase: 'connect' }) }))
+  expect(await screen.findByText('正在检查连接…')).toBeInTheDocument()
+  expect(screen.queryByText(/已传/)).toBeNull()
+})
+
+it('plan phase shows what the dry run found, not bytes transferred', async () => {
+  renderOverview(
+    running({ run_id: 'r7', status: 'running', progress: transferring({ phase: 'plan', scanned: 12345, files_done: 300, bytes_done: 1048576 }) }),
+  )
+  expect(await screen.findByText('正在试运行：比对源和目标，还没开始传输 · 已扫描 12,345 项 · 发现 300 个文件要传，共 1 MiB')).toBeInTheDocument()
+  expect(screen.queryByText(/已传/)).toBeNull()
+  // Nothing moves yet: the bar pulses instead of filling.
   expect(screen.getByRole('progressbar')).not.toHaveAttribute('aria-valuenow')
 })
 

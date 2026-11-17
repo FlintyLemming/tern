@@ -101,14 +101,30 @@ type UnitResult struct {
 	Error  string `json:"error"`
 }
 
+// Phase is the step of a run a progress report comes from. Engines that
+// do not set it (restic) report only their transfer.
+type Phase string
+
+const (
+	PhaseConnect  Phase = "connect"  // checking the connection, preparing the tool
+	PhaseCheck    Phase = "check"    // checking both ends of a folder pair
+	PhasePlan     Phase = "plan"     // the tool's dry run: comparing source and destination
+	PhaseTransfer Phase = "transfer" // moving data
+)
+
 // Progress is the common shape of what the tools report while running.
+// In the plan phase FilesDone and BytesDone count what was found to
+// transfer so far, Scanned the entries listed (0 when the tool does not
+// say), and the totals, speed and ETA are 0.
 type Progress struct {
 	Unit           string  `json:"unit"`
+	Phase          Phase   `json:"phase"`
 	BytesDone      int64   `json:"bytes_done"`
 	BytesTotal     int64   `json:"bytes_total"`
 	TotalEstimated bool    `json:"total_estimated,omitempty"`
 	FilesDone      int64   `json:"files_done"`
 	FilesTotal     int64   `json:"files_total"`
+	Scanned        int64   `json:"scanned"`
 	SpeedBps       float64 `json:"speed_bps"`
 	ETASec         int64   `json:"eta_sec"`
 }

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -471,7 +472,12 @@ func TestProgressCarriesUnitName(t *testing.T) {
 	if _, err := e.RunUnit(context.Background(), f.env, 0); err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].Unit != local+" → /srv/a" || got[0].BytesDone != 1 {
+	for _, p := range got {
+		if p.Unit != local+" → /srv/a" {
+			t.Errorf("progress without the unit: %+v", p)
+		}
+	}
+	if len(got) == 0 || got[len(got)-1].BytesDone != 1 {
 		t.Errorf("progress = %+v", got)
 	}
 }
@@ -494,15 +500,16 @@ func TestMirrorProgressUsesPlanTotals(t *testing.T) {
 	if _, err := e.RunUnit(context.Background(), f.env, 0); err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 {
-		t.Fatalf("got %d progress updates, want 1", len(got))
-	}
 	want := model.Progress{
-		Unit: local + " → /srv/a", BytesDone: 100, BytesTotal: 2100, TotalEstimated: false,
+		Unit: local + " → /srv/a", Phase: model.PhaseTransfer, BytesDone: 100, BytesTotal: 2100, TotalEstimated: false,
 		FilesDone: 1, FilesTotal: 5, SpeedBps: 50, ETASec: 40,
 	}
-	if got[0] != want {
-		t.Errorf("progress = %+v, want %+v", got[0], want)
+	if len(got) == 0 || got[len(got)-1] != want {
+		t.Errorf("progress = %+v, want last %+v", got, want)
+	}
+	// The plan's totals are there from the start of the transfer.
+	if start := got[len(got)-2]; start.Phase != model.PhaseTransfer || start.BytesTotal != 2100 || start.FilesTotal != 2 {
+		t.Errorf("transfer start = %+v", start)
 	}
 }
 
@@ -522,8 +529,64 @@ func TestKeepProgressPreservesEstimated(t *testing.T) {
 	if _, err := e.RunUnit(context.Background(), f.env, 0); err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || !got[0].TotalEstimated || got[0].BytesTotal != 500 {
+	if last := got[len(got)-1]; !last.TotalEstimated || last.BytesTotal != 500 {
 		t.Errorf("progress = %+v", got)
+	}
+}
+
+// phasePlanner reports what the tools report: dry-run counts from Plan
+// (with the speed and totals rclone's accounting makes up for them), and
+// transfer progress.
+type phasePlanner struct{ fakePlanner }
+
+func (p *phasePlanner) Plan(ctx context.Context, env engine.Env, fp model.FolderPair) (Plan, error) {
+	env.Progress(model.Progress{FilesDone: 3, BytesDone: 300, Scanned: 40, BytesTotal: 300, FilesTotal: 3, SpeedBps: 1e9, ETASec: 1})
+	return p.fakePlanner.Plan(ctx, env, fp)
+}
+
+func (p *phasePlanner) Transfer(ctx context.Context, env engine.Env, fp model.FolderPair, maxDelete int) (model.UnitResult, error) {
+	env.Progress(model.Progress{BytesDone: 1000, BytesTotal: 1000, SpeedBps: 120})
+	return p.fakePlanner.Transfer(ctx, env, fp, maxDelete)
+}
+
+func TestProgressPhases(t *testing.T) {
+	f := newFixture(t)
+	var got []model.Progress
+	f.env.Progress = func(p model.Progress) { got = append(got, p) }
+	pl := &phasePlanner{fakePlanner: fakePlanner{state: SourceOK}}
+	local := dirWith(t, "a")
+	e := New(syncTask("push", "mirror", model.FolderPair{Local: local, Remote: "/srv/a"}), engine.Request{Kind: model.RunSync},
+		pl, func(context.Context) error { return nil }, func(string) (bool, error) { return true, nil })
+	if err := e.Preflight(context.Background(), f.env); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.RunUnit(context.Background(), f.env, 0); err != nil {
+		t.Fatal(err)
+	}
+	unit := local + " → /srv/a"
+	want := []model.Progress{
+		{Phase: model.PhaseConnect},
+		{Unit: unit, Phase: model.PhaseCheck},
+		{Unit: unit, Phase: model.PhasePlan},
+		// Speed, ETA and totals of a dry run are rclone's bookkeeping.
+		{Unit: unit, Phase: model.PhasePlan, FilesDone: 3, BytesDone: 300, Scanned: 40},
+		{Unit: unit, Phase: model.PhaseTransfer},
+		{Unit: unit, Phase: model.PhaseTransfer, BytesDone: 1000, BytesTotal: 1000, SpeedBps: 120},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("progress =\n%+v\nwant\n%+v", got, want)
+	}
+}
+
+func TestDryRunPhases(t *testing.T) {
+	f := newFixture(t)
+	var phases []model.Phase
+	f.env.Progress = func(p model.Progress) { phases = append(phases, p.Phase) }
+	if _, err := f.run("push", "keep", model.FolderPair{Local: dirWith(t, "a"), Remote: "/srv/a"}, engine.Request{Kind: model.RunDryRun}); err != nil {
+		t.Fatal(err)
+	}
+	if want := []model.Phase{model.PhaseConnect, model.PhaseCheck, model.PhasePlan}; !reflect.DeepEqual(slices.Compact(phases), want) {
+		t.Errorf("phases = %q, want %q", phases, want)
 	}
 }
 

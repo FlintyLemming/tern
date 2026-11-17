@@ -95,13 +95,14 @@ export function RunDetailPage() {
             <dt className="text-ink-muted">{t('run.attempts')}</dt>
             <dd>{r.attempts}</dd>
             <dt className="text-ink-muted">{t('run.col_bytes')}</dt>
-            <dd>{formatBytes(r.bytes)}</dd>
+            {/* Totals are written when the run ends; the live numbers are below. */}
+            <dd>{done ? formatBytes(r.bytes) : '—'}</dd>
             <dt className="text-ink-muted">{t('run.col_files')}</dt>
-            <dd>{r.files}</dd>
+            <dd>{done ? r.files : '—'}</dd>
           </dl>
           {!done && progress ? (
             <div className="mt-4 flex flex-col gap-1">
-              <RunProgress progress={progress} />
+              <RunProgress progress={progress} showUnit={r.units.length > 1} />
             </div>
           ) : null}
         </Card>

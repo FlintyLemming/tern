@@ -83,6 +83,7 @@ func (e *Engine) Units() []string {
 }
 
 func (e *Engine) Preflight(ctx context.Context, env engine.Env) error {
+	report(env, model.Progress{Phase: model.PhaseConnect})
 	if err := e.check(ctx); err != nil {
 		return err
 	}
@@ -184,40 +185,54 @@ func logPlan(w io.Writer, plan Plan) {
 	fmt.Fprintf(w, "plan: %d to transfer, %d to delete\n", plan.TransferCount, plan.DeleteCount)
 }
 
+// report passes p on when the run wants progress.
+func report(env engine.Env, p model.Progress) {
+	if env.Progress != nil {
+		env.Progress(p)
+	}
+}
+
+// withProgress returns env with its progress reports passed through f.
+func withProgress(env engine.Env, f func(model.Progress) model.Progress) engine.Env {
+	if next := env.Progress; next != nil {
+		env.Progress = func(p model.Progress) { next(f(p)) }
+	}
+	return env
+}
+
+// withPlanTotals fills in the totals of a transfer from the dry run that
+// came before it, when there was one: rclone finds what to transfer as it
+// goes, so its own totals only cover what it has queued so far.
+func withPlanTotals(pr model.Progress, plan Plan) model.Progress {
+	if plan.Bytes <= 0 {
+		return pr
+	}
+	if pr.BytesTotal < plan.Bytes {
+		pr.BytesTotal = plan.Bytes
+		if pr.SpeedBps > 0 && pr.BytesTotal > pr.BytesDone {
+			pr.ETASec = int64(float64(pr.BytesTotal-pr.BytesDone) / pr.SpeedBps)
+		} else {
+			pr.ETASec = 0
+		}
+	}
+	if fc := int64(plan.TransferCount); pr.FilesTotal < fc {
+		pr.FilesTotal = fc
+	}
+	pr.TotalEstimated = false
+	return pr
+}
+
 // RunUnit syncs pair i. The steps run in this order and stop at the first
 // error: local end, mirror source check, plan, (dry run ends here), delete
-// limit, transfer.
+// limit, transfer. Each step's progress carries its phase.
 func (e *Engine) RunUnit(ctx context.Context, env engine.Env, i int) (model.UnitResult, error) {
 	p := e.spec.Pairs[i]
 	name := e.unitName(p)
 	out := model.UnitResult{Name: name}
-	var plan Plan
-	if env.Progress != nil {
-		report := env.Progress
-		env.Progress = func(pr model.Progress) {
-			pr.Unit = name
-			// Mirror mode already ran Plan() over the full pair; prefer its
-			// total when the streaming transfer tool (rclone) has only
-			// queued part of the tree so far.
-			if plan.Bytes > 0 {
-				if pr.BytesTotal < plan.Bytes {
-					pr.BytesTotal = plan.Bytes
-					if pr.SpeedBps > 0 && pr.BytesTotal > pr.BytesDone {
-						pr.ETASec = int64(float64(pr.BytesTotal-pr.BytesDone) / pr.SpeedBps)
-					} else {
-						pr.ETASec = 0
-					}
-				}
-				if fc := int64(plan.TransferCount); pr.FilesTotal < fc {
-					pr.FilesTotal = fc
-				}
-				pr.TotalEstimated = false
-			}
-			report(pr)
-		}
-	}
+	env = withProgress(env, func(pr model.Progress) model.Progress { pr.Unit = name; return pr })
 	dryRun := e.req.Kind == model.RunDryRun
 
+	report(env, model.Progress{Phase: model.PhaseCheck})
 	if err := e.checkLocal(p); err != nil {
 		return out, err
 	}
@@ -231,9 +246,15 @@ func (e *Engine) RunUnit(ctx context.Context, env engine.Env, i int) (model.Unit
 		}
 	}
 
+	var plan Plan
 	if e.mirror() || dryRun {
+		report(env, model.Progress{Phase: model.PhasePlan})
+		// A dry run moves no data: only its counts mean anything.
+		planEnv := withProgress(env, func(pr model.Progress) model.Progress {
+			return model.Progress{Unit: pr.Unit, Phase: model.PhasePlan, FilesDone: pr.FilesDone, BytesDone: pr.BytesDone, Scanned: pr.Scanned}
+		})
 		var err error
-		if plan, err = e.p.Plan(ctx, env, p); err != nil {
+		if plan, err = e.p.Plan(ctx, planEnv, p); err != nil {
 			return out, err
 		}
 		logPlan(env.Log, plan)
@@ -252,7 +273,12 @@ func (e *Engine) RunUnit(ctx context.Context, env engine.Env, i int) (model.Unit
 		// were just counted, something changed in between.
 		maxDelete = plan.DeleteCount
 	}
-	res, err := e.p.Transfer(ctx, env, p, maxDelete)
+	transferEnv := withProgress(env, func(pr model.Progress) model.Progress {
+		pr.Phase = model.PhaseTransfer
+		return withPlanTotals(pr, plan)
+	})
+	report(transferEnv, model.Progress{})
+	res, err := e.p.Transfer(ctx, transferEnv, p, maxDelete)
 	res.Name = name
 	return res, err
 }

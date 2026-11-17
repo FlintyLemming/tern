@@ -25,6 +25,7 @@ type stats struct {
 	ETA            *float64 `json:"eta"` // null while unknown
 	Transfers      int64    `json:"transfers"`
 	TotalTransfers int64    `json:"totalTransfers"`
+	Listed         int64    `json:"listed"` // directory entries listed, both ends
 }
 
 // Parser reads rclone's JSON log. Dry-run lines become a plan, stats
@@ -56,6 +57,7 @@ func (p *Parser) Line(b []byte) (logLine string) {
 				TotalEstimated: true, // rclone streams discovery; totalBytes is only queued+done so far
 				FilesDone:      s.Transfers,
 				FilesTotal:     s.TotalTransfers,
+				Scanned:        s.Listed,
 				SpeedBps:       s.Speed,
 			}
 			if s.ETA != nil {
