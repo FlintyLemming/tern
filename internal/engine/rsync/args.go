@@ -30,6 +30,14 @@ const rsyncPath = `sh -c 'echo tern-pid:$$ >&2; exec rsync "$@"' rsync`
 
 const pidPrefix = "tern-pid:"
 
+// timeoutArg is rsync's I/O timeout: it exits when neither end has sent or
+// received anything for that long. It is only a backstop for a remote rsync
+// that hangs; a dead link is caught sooner by the SSH keepalive (15 s × 4).
+// It is long because a slow target disk stalls the receiver too: a ZFS pool
+// on a host-managed SMR drive (dm-zoned) held single writes for over two
+// minutes, and a 60 s timeout failed every attempt of a large sync there.
+const timeoutArg = "--timeout=600"
+
 // Args is the rsync call that syncs one folder pair. A mirror always gets
 // --delete (a dry run has to list the deletions); maxDelete >= 0 adds the
 // limit. excludeFile is "" when the task has no exclude rules. Itemized
@@ -37,7 +45,7 @@ const pidPrefix = "tern-pid:"
 // not flood the run log with one line per file.
 func Args(spec model.SyncSpec, p model.FolderPair, sshConfig, excludeFile string, dryRun bool, maxDelete int) []string {
 	// -s keeps the remote shell from splitting or expanding the remote path.
-	args := []string{"-aHs", "--no-inc-recursive", "--partial-dir=.tern-partial", "--timeout=60", "--info=progress2", "--stats",
+	args := []string{"-aHs", "--no-inc-recursive", "--partial-dir=.tern-partial", timeoutArg, "--info=progress2", "--stats",
 		"-e", shell(sshConfig), "--rsync-path=" + rsyncPath}
 	if spec.DeleteMode == "mirror" {
 		args = append(args, "--delete")

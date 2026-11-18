@@ -30,6 +30,8 @@
 - rclone 不再自己整轮重跑（`--retries 1`），操作级重试减到 `--low-level-retries 3`，整轮重试交给 tern 的任务级重试（有间隔、界面显示“等待重试”、只重跑失败的文件夹对）。rclone 约 1 分 40 秒报出 `connection lost`、在传的文件失败，但为了规格 §8.3 保留的操作级重试，它还会逐个去试剩下的文件，每次新开的 ssh 都要等 15 秒连接超时，进程要到约 3 分钟才退出。所以 `TestDisconnectDetectedInTime` 对 rsync 和 restic 仍要求进程 2 分钟内退出，对 rclone 改为要求 2 分钟内在运行日志里报出断线。
 - rsync 断线后，对端的 `rsync --server` 还会活好几分钟：它自己发的保活让它的 60 秒超时永远不触发，要等 TCP 最终重置才退出，退出时才把收了一半的文件存进 `.tern-partial`。2 分钟断网的第一次实测里，重试在链路恢复 7 秒后就开始了，没找到半截文件，200 MiB 的大文件从头重传，旧进程随后又把半截文件留在了目的地的 `.tern-partial/` 里成了垃圾。现在 tern 启动对端 rsync 时让它先报告自己的 PID（`--rsync-path`），重试一组文件夹对之前，先用同一份 SSH 配置确认那个进程还是 `rsync --server`，再给它和它的子进程发 SIGTERM（它会存好半截文件）并等它退出，然后才重跑 rsync。
 
+2026-11-18：rsync 的 I/O 超时从 60 秒改为 600 秒（`--timeout=600`，同步、`--list-only` 探测和界面上显示的等效命令都改了）。起因是 QNAP 测试机推送到 hf-archived 的一个大同步任务四次尝试全部报 `[sender] io timeout after 60 seconds`：那边的 ZFS 池建在 host-managed SMR 盘（dm-zoned，16 GB Optane 做缓存区）上，`zpool iostat -w` 里有上千次写入等了两分钟以上，内核也报过 `txg_sync blocked for more than 122 seconds`。盘卡住时对端 rsync 不再读数据，两边 60 秒没有收发，发送端就退出了。同一任务前一天用 rclone 跑了 1.5 小时没出错，因为 rclone 走外部 ssh，数据流上没有空闲超时。断线仍由 SSH 保活在约 75 秒判定：盘卡住时 sshd 照常回应保活，所以不会被当成断线。600 秒只用来兜底对端 rsync 卡死、sshd 却还活着的情况。上面 2 分钟断网的测试里，rsync 因此是被 SSH 保活断开的，不再是自己超时退出。
+
 ## §15 待确认项的结论
 
 | 待确认 | 结论 | 来源 |

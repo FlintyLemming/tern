@@ -161,7 +161,7 @@ var listRE = regexp.MustCompile(`^\S+\s+[0-9,]+\s+\S+\s+\S+\s(.*)$`)
 var pidRE = regexp.MustCompile(`^[0-9]{1,10}$`)
 
 func (p *planner) RemoteState(ctx context.Context, env engine.Env, fp model.FolderPair) (synccore.SourceState, error) {
-	args := []string{"-s", "--list-only", "--timeout=60", "-e", shell(p.sshConfig), remote(fp.Remote)}
+	args := []string{"-s", "--list-only", timeoutArg, "-e", shell(p.sshConfig), remote(fp.Remote)}
 	entries := 0
 	res, err := p.exec(ctx, env, args, func(line []byte) string {
 		if m := listRE.FindSubmatch(line); m != nil && string(m[1]) != "." {
@@ -240,7 +240,7 @@ func (p *planner) Transfer(ctx context.Context, env engine.Env, fp model.FolderP
 // Describe is the rsync command line that syncs the pair without tern:
 // plain ssh with the connection's port instead of tern's generated config.
 func (p *planner) Describe(fp model.FolderPair) string {
-	parts := []string{"rsync", "-aH", "--partial-dir=.tern-partial", "--timeout=60"}
+	parts := []string{"rsync", "-aH", "--partial-dir=.tern-partial", timeoutArg}
 	if p.spec.DeleteMode == "mirror" {
 		parts = append(parts, "--delete")
 	}

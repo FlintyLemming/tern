@@ -106,7 +106,7 @@ func TestBuilderMissingConnection(t *testing.T) {
 
 func TestDescribeRsyncPushMirror(t *testing.T) {
 	got := describe(t, newStore(t), task("rsync", "ssh", "push", "mirror", pairA))
-	want := `rsync -aH --partial-dir=.tern-partial --timeout=60 --delete -e "ssh -p 22" /sources/a/ backup@nas2.example:/srv/a/`
+	want := `rsync -aH --partial-dir=.tern-partial --timeout=600 --delete -e "ssh -p 22" /sources/a/ backup@nas2.example:/srv/a/`
 	if len(got) != 1 || got[0] != want {
 		t.Errorf("Describe = %q\nwant %q", got, want)
 	}
@@ -116,7 +116,7 @@ func TestDescribeRsyncOptions(t *testing.T) {
 	tk := task("rsync", "ssh", "pull", "keep", model.FolderPair{Local: "/targets/my photos", Remote: "/srv/a"})
 	tk.Sync.LimitKiB, tk.Sync.Compare = 2048, "checksum"
 	got := describe(t, newStore(t), tk)
-	want := `rsync -aH --partial-dir=.tern-partial --timeout=60 --bwlimit=2048 --checksum -e "ssh -p 22" backup@nas2.example:/srv/a/ '/targets/my photos/'`
+	want := `rsync -aH --partial-dir=.tern-partial --timeout=600 --bwlimit=2048 --checksum -e "ssh -p 22" backup@nas2.example:/srv/a/ '/targets/my photos/'`
 	if len(got) != 1 || got[0] != want {
 		t.Errorf("Describe = %q\nwant %q", got, want)
 	}

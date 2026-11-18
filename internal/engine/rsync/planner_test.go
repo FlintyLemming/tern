@@ -119,7 +119,7 @@ func TestRemoteState(t *testing.T) {
 			t.Errorf("exit %d, stdout %q: RemoteState = %v, %v", c.step.Exit, c.step.Stdout, got, err)
 		}
 		calls := f.tool.Calls()
-		want := []string{"-s", "--list-only", "--timeout=60", "-e", f.sshArg(), "tern-target:/srv/a/"}
+		want := []string{"-s", "--list-only", "--timeout=600", "-e", f.sshArg(), "tern-target:/srv/a/"}
 		if len(calls) != 1 || !slices.Equal(calls[0].Args, want) {
 			t.Errorf("calls = %+v, want %q", calls, want)
 		}

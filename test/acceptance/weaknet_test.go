@@ -19,7 +19,7 @@ import (
 
 // Spec §16 item 4: 5% packet loss, and the link gone half way. The spec
 // says a minute; this outage is two, longer than it takes to notice a dead
-// link (SSH keepalive 15 s × 4, I/O timeouts 60 s), so the retry and resume
+// link (SSH keepalive 15 s × 4; rsync's own I/O timeout is 600 s), so the retry and resume
 // paths really run. A one-minute outage is ridden out on the open
 // connection: nothing is sent twice, but nothing is retried either (the
 // user's decision of 2026-11-12, recorded in docs/acceptance.md).
