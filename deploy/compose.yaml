@@ -11,7 +11,7 @@ services:
       # PUID: "1000"                         # 拉取同步落地文件的属主；不设则为 root
       # PGID: "1000"
     volumes:
-      - ./data:/data                         # 数据库、日志、restic 缓存
+      - ./data:/data                         # 数据库、日志、restic 缓存和临时文件
       - ./secrets:/secrets                   # 主密钥文件，和 data 分开保管
       - /share/Photos:/sources/photos:ro     # 只推送或备份的目录，只读挂载
       - /share/Inbox:/targets/inbox          # 拉取同步的落地目录

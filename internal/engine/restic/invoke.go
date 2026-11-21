@@ -4,6 +4,7 @@ package restic
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -45,9 +46,27 @@ func (iv Invocation) Cmd(args ...string) proc.Cmd {
 			// On the data volume: without the cache every run downloads the
 			// index again, which is slow on a weak link.
 			"RESTIC_CACHE_DIR=" + filepath.Join(iv.DataDir, "restic-cache"),
+			"TMPDIR=" + TempDir(iv.DataDir),
 			"RESTIC_PROGRESS_FPS=1",
 		},
 	}
+}
+
+// TempDir is where restic writes the packs it is about to upload: 16 MiB
+// each, one per connection plus a few being filled, so about 150 MiB at the
+// default five connections. Not /tmp: on QTS that is a 64 MiB RAM disk.
+// restic unlinks each file as soon as it creates it, so a crash leaves
+// nothing behind; the directory itself must exist (PrepareTempDir).
+func TempDir(dataDir string) string {
+	return filepath.Join(dataDir, "restic-tmp")
+}
+
+// PrepareTempDir creates TempDir under dataDir.
+func PrepareTempDir(dataDir string) error {
+	if err := os.MkdirAll(TempDir(dataDir), 0o700); err != nil {
+		return fmt.Errorf("create restic's temporary directory: %w", err)
+	}
+	return nil
 }
 
 // csvField quotes v for restic's -o flag, which is parsed as a CSV record:

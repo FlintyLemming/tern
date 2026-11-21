@@ -134,6 +134,14 @@ func TestStartCreatesDataDir0700(t *testing.T) {
 	if !fi.IsDir() || fi.Mode().Perm() != 0o700 {
 		t.Errorf("data dir mode = %o, want 700", fi.Mode().Perm())
 	}
+	// restic fails to write its packs when TMPDIR does not exist
+	fi, err = os.Stat(filepath.Join(cfg.DataDir, "restic-tmp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fi.IsDir() || fi.Mode().Perm() != 0o700 {
+		t.Errorf("restic-tmp mode = %o, want 700", fi.Mode().Perm())
+	}
 }
 
 func TestTLS(t *testing.T) {

@@ -53,7 +53,8 @@ func TestCmdEnv(t *testing.T) {
 	iv := testInvocation(t)
 	got := append([]string(nil), iv.Cmd("snapshots").Env...)
 	sort.Strings(got)
-	want := []string{"RESTIC_CACHE_DIR=/data/restic-cache", "RESTIC_PASSWORD_FILE=" + iv.Dir.Path + "/repo-password", "RESTIC_PROGRESS_FPS=1"}
+	want := []string{"RESTIC_CACHE_DIR=/data/restic-cache", "RESTIC_PASSWORD_FILE=" + iv.Dir.Path + "/repo-password", "RESTIC_PROGRESS_FPS=1",
+		"TMPDIR=/data/restic-tmp"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Env = %q, want %q", got, want)
 	}

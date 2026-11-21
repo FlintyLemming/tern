@@ -27,7 +27,7 @@ services:
       # PUID: "1000"                         # 拉取同步落地文件的属主；不设则为 root
       # PGID: "1000"
     volumes:
-      - ./data:/data                         # 数据库、日志、restic 缓存
+      - ./data:/data                         # 数据库、日志、restic 缓存和临时文件
       - ./secrets:/secrets                   # tern 自动生成的密钥文件，和 data 分开保管
       - /share/Photos:/sources/photos:ro     # 只推送或备份的目录，只读挂载
       - /share/Inbox:/targets/inbox          # 拉取同步的落地目录
@@ -76,7 +76,7 @@ QNAP 上也可以不用 Docker，直接装 tern 的 QPKG。装好后它和 QNAP 
   - 时区跟着 QTS 的设置走，改了时区要在 App Center 里停用再启用 tern。
   - BBR 要用 SSH 登录 NAS 执行 `sysctl -w net.ipv4.tcp_congestion_control=bbr`，它对整台 NAS 生效，NAS 重启后要重新执行。
   - 自带 restic、rclone，以及静态编译的 rsync 和 OpenSSH 客户端，版本和镜像里的一样，不用 QTS 自带的（QTS 的 rsync 太旧）。
-- 文件都在安装目录（`/share/<数据卷>/.qpkg/tern`）里：`data`（数据库、日志 `tern.log`、restic 缓存）、`secrets`（tern 自动生成的密钥文件 `master.key`）、`tern.conf`（端口和额外的环境变量）。升级不会动它们，**卸载会把它们一起删掉**。每个备份任务的恢复信息要另外保存到这台 NAS 以外（第 4 节）。
+- 文件都在安装目录（`/share/<数据卷>/.qpkg/tern`）里：`data`（数据库、日志 `tern.log`、restic 缓存和临时文件）、`secrets`（tern 自动生成的密钥文件 `master.key`）、`tern.conf`（端口和额外的环境变量）。升级不会动它们，**卸载会把它们一起删掉**。每个备份任务的恢复信息要另外保存到这台 NAS 以外（第 4 节）。
 
 ## 4. 密码、凭据和你要自己保管的东西
 
@@ -173,7 +173,7 @@ esac
 | 变量 | 默认值 | 作用 |
 |---|---|---|
 | `TERN_LISTEN` | `:8080` | 监听地址 |
-| `TERN_DATA_DIR` | `/data` | 数据库、日志、restic 缓存 |
+| `TERN_DATA_DIR` | `/data` | 数据库、日志、restic 缓存和临时文件 |
 | `TERN_SECRETS_DIR` | `/secrets` | tern 自动生成的密钥文件 |
 | `TERN_RUNTIME_DIR` | `/dev/shm/tern` | 运行时临时目录，必须是 tmpfs，否则拒绝启动 |
 | `TERN_TLS_CERT` | 空 | 内置 TLS 的证书文件，和 `TERN_TLS_KEY` 要么都设、要么都不设 |

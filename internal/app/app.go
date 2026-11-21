@@ -100,6 +100,9 @@ func startWithStore(ctx context.Context, cfg config.Config, version string, st *
 	if err := prepareRuntimeDir(cfg.RuntimeDir); err != nil {
 		return nil, err
 	}
+	if err := restic.PrepareTempDir(cfg.DataDir); err != nil {
+		return nil, err
+	}
 	v := vault.New(st, cfg.SecretsDir)
 	state, err := v.Load(ctx)
 	if err != nil {
